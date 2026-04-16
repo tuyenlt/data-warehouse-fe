@@ -1,0 +1,43 @@
+# dependencies
+node_modules
+.pnp
+.pnp.js
+
+# build output
+dist
+build
+
+# logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# environment variables
+.env
+.env.*
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# vite
+vite.config.ts.timestamp-*
+vite.config.js.timestamp-*
+
+# typescript
+*.tsbuildinfo
+
+# coverage
+coverage
+
+# cache
+.cache
+.temp
