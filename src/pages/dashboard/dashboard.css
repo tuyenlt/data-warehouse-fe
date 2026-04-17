@@ -1,0 +1,144 @@
+.dashboard-v2-page {
+  color: #18263a;
+  display: grid;
+  gap: 1rem;
+}
+
+.dashboard-v2-page__header {
+  background: linear-gradient(135deg, #edf5ff 0%, #f8fbff 100%);
+  border: 1px solid #d8e4f2;
+  border-radius: 1rem;
+  padding: 1rem 1.1rem;
+}
+
+.dashboard-v2-page__header h1 {
+  margin: 0;
+  font-size: 1.7rem;
+  color: #0f3765;
+}
+
+.dashboard-v2-filters {
+  background: #ffffff;
+  border: 1px solid #dce6f3;
+  border-radius: 1rem;
+  padding: 0.8rem;
+  box-shadow: 0 8px 18px rgba(20, 46, 77, 0.08);
+}
+
+.dashboard-v2-filters h3 {
+  margin: 0 0 0.55rem;
+  color: #1b375d;
+  font-size: 0.95rem;
+}
+
+.dashboard-v2-filters__grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 0.6rem;
+}
+
+.dashboard-v2-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.kpi-card {
+  background: #ffffff;
+  border: 1px solid #dce6f3;
+  border-radius: 1rem;
+  padding: 0.9rem;
+  box-shadow: 0 8px 18px rgba(20, 46, 77, 0.08);
+}
+
+.kpi-card p {
+  margin: 0;
+  color: #5c6d85;
+  font-weight: 600;
+}
+
+.kpi-card h2 {
+  margin: 0.42rem 0 0;
+  font-size: 1.7rem;
+  line-height: 1.1;
+  color: #123a66;
+}
+
+.kpi-card__change {
+  display: inline-block;
+  margin-top: 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  border-radius: 0.55rem;
+  padding: 0.18rem 0.45rem;
+}
+
+.kpi-card__change--up {
+  color: #0b6b31;
+  background: #e6f8ed;
+  border: 1px solid #9dddb1;
+}
+
+.kpi-card__change--down {
+  color: #a31222;
+  background: #ffe9ec;
+  border: 1px solid #f2adb8;
+}
+
+.kpi-card__change--neutral {
+  color: #566c89;
+  background: #edf2fb;
+  border: 1px solid #c9d6ea;
+}
+
+.dashboard-v2-mini-charts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.mini-chart-card {
+  background: #ffffff;
+  border: 1px solid #dce6f3;
+  border-radius: 1rem;
+  padding: 0.7rem;
+  box-shadow: 0 8px 18px rgba(20, 46, 77, 0.08);
+  cursor: pointer;
+}
+
+.mini-chart-card h4 {
+  margin: 0.15rem 0 0.5rem;
+  color: #1b375d;
+  font-size: 0.92rem;
+}
+
+.mini-chart-card:hover {
+  border-color: #b8cce6;
+  transform: translateY(-1px);
+}
+
+@media (max-width: 1200px) {
+  .dashboard-v2-filters__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .dashboard-v2-mini-charts {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 860px) {
+  .dashboard-v2-kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-v2-filters__grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .dashboard-v2-filters__grid {
+    grid-template-columns: 1fr;
+  }
+}

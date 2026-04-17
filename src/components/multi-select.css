@@ -1,0 +1,83 @@
+.multi-select {
+  position: relative;
+}
+
+.multi-select__label {
+  margin: 0 0 0.3rem;
+  font-size: 0.72rem;
+  color: #5e6f87;
+  font-weight: 600;
+}
+
+.multi-select__trigger {
+  width: 100%;
+  min-height: 2.15rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid #cfd9e7;
+  border-radius: 0.65rem;
+  background: #ffffff;
+  color: #18263a;
+  padding: 0.42rem 0.6rem;
+  cursor: pointer;
+  font-size: 0.84rem;
+  box-shadow: 0 2px 8px rgba(15, 33, 57, 0.06);
+}
+
+.multi-select__caret {
+  color: #60758f;
+  margin-left: 0.5rem;
+}
+
+.multi-select__menu {
+  position: absolute;
+  z-index: 30;
+  width: 100%;
+  margin-top: 0.28rem;
+  border: 1px solid #d4deeb;
+  border-radius: 0.65rem;
+  background: #ffffff;
+  box-shadow: 0 12px 30px rgba(15, 33, 57, 0.14);
+  padding: 0.25rem;
+}
+
+.multi-select__clear {
+  border: none;
+  background: #eef5ff;
+  color: #1f4f80;
+  border-radius: 0.48rem;
+  font-size: 0.76rem;
+  padding: 0.24rem 0.45rem;
+  cursor: pointer;
+  margin: 0.1rem 0.1rem 0.22rem;
+}
+
+.multi-select__menu ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 8rem;
+  overflow-y: auto;
+}
+
+.multi-select__option {
+  display: flex;
+  align-items: center;
+  gap: 0.44rem;
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.4rem;
+  color: #20324e;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.multi-select__option:hover {
+  background: #edf4ff;
+}
+
+.multi-select__option input {
+  width: 0.9rem;
+  height: 0.9rem;
+  margin: 0;
+}

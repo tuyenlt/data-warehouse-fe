@@ -1,0 +1,722 @@
+[
+  {
+    "ThoiGianKey": 1,
+    "Thang": 1,
+    "Quy": 1,
+    "Nam": 2017
+  },
+  {
+    "ThoiGianKey": 2,
+    "Thang": 2,
+    "Quy": 1,
+    "Nam": 2017
+  },
+  {
+    "ThoiGianKey": 3,
+    "Thang": 3,
+    "Quy": 1,
+    "Nam": 2017
+  },
+  {
+    "ThoiGianKey": 4,
+    "Thang": 4,
+    "Quy": 2,
+    "Nam": 2017
+  },
+  {
+    "ThoiGianKey": 5,
+    "Thang": 5,
+    "Quy": 2,
+    "Nam": 2017
+  },
+  {
+    "ThoiGianKey": 6,
+    "Thang": 6,
+    "Quy": 2,
+    "Nam": 2017
+  },
+  {
+    "ThoiGianKey": 7,
+    "Thang": 7,
+    "Quy": 3,
+    "Nam": 2017
+  },
+  {
+    "ThoiGianKey": 8,
+    "Thang": 8,
+    "Quy": 3,
+    "Nam": 2017
+  },
+  {
+    "ThoiGianKey": 9,
+    "Thang": 9,
+    "Quy": 3,
+    "Nam": 2017
+  },
+  {
+    "ThoiGianKey": 10,
+    "Thang": 10,
+    "Quy": 4,
+    "Nam": 2017
+  },
+  {
+    "ThoiGianKey": 11,
+    "Thang": 11,
+    "Quy": 4,
+    "Nam": 2017
+  },
+  {
+    "ThoiGianKey": 12,
+    "Thang": 12,
+    "Quy": 4,
+    "Nam": 2017
+  },
+  {
+    "ThoiGianKey": 13,
+    "Thang": 1,
+    "Quy": 1,
+    "Nam": 2018
+  },
+  {
+    "ThoiGianKey": 14,
+    "Thang": 2,
+    "Quy": 1,
+    "Nam": 2018
+  },
+  {
+    "ThoiGianKey": 15,
+    "Thang": 3,
+    "Quy": 1,
+    "Nam": 2018
+  },
+  {
+    "ThoiGianKey": 16,
+    "Thang": 4,
+    "Quy": 2,
+    "Nam": 2018
+  },
+  {
+    "ThoiGianKey": 17,
+    "Thang": 5,
+    "Quy": 2,
+    "Nam": 2018
+  },
+  {
+    "ThoiGianKey": 18,
+    "Thang": 6,
+    "Quy": 2,
+    "Nam": 2018
+  },
+  {
+    "ThoiGianKey": 19,
+    "Thang": 7,
+    "Quy": 3,
+    "Nam": 2018
+  },
+  {
+    "ThoiGianKey": 20,
+    "Thang": 8,
+    "Quy": 3,
+    "Nam": 2018
+  },
+  {
+    "ThoiGianKey": 21,
+    "Thang": 9,
+    "Quy": 3,
+    "Nam": 2018
+  },
+  {
+    "ThoiGianKey": 22,
+    "Thang": 10,
+    "Quy": 4,
+    "Nam": 2018
+  },
+  {
+    "ThoiGianKey": 23,
+    "Thang": 11,
+    "Quy": 4,
+    "Nam": 2018
+  },
+  {
+    "ThoiGianKey": 24,
+    "Thang": 12,
+    "Quy": 4,
+    "Nam": 2018
+  },
+  {
+    "ThoiGianKey": 25,
+    "Thang": 1,
+    "Quy": 1,
+    "Nam": 2019
+  },
+  {
+    "ThoiGianKey": 26,
+    "Thang": 2,
+    "Quy": 1,
+    "Nam": 2019
+  },
+  {
+    "ThoiGianKey": 27,
+    "Thang": 3,
+    "Quy": 1,
+    "Nam": 2019
+  },
+  {
+    "ThoiGianKey": 28,
+    "Thang": 4,
+    "Quy": 2,
+    "Nam": 2019
+  },
+  {
+    "ThoiGianKey": 29,
+    "Thang": 5,
+    "Quy": 2,
+    "Nam": 2019
+  },
+  {
+    "ThoiGianKey": 30,
+    "Thang": 6,
+    "Quy": 2,
+    "Nam": 2019
+  },
+  {
+    "ThoiGianKey": 31,
+    "Thang": 7,
+    "Quy": 3,
+    "Nam": 2019
+  },
+  {
+    "ThoiGianKey": 32,
+    "Thang": 8,
+    "Quy": 3,
+    "Nam": 2019
+  },
+  {
+    "ThoiGianKey": 33,
+    "Thang": 9,
+    "Quy": 3,
+    "Nam": 2019
+  },
+  {
+    "ThoiGianKey": 34,
+    "Thang": 10,
+    "Quy": 4,
+    "Nam": 2019
+  },
+  {
+    "ThoiGianKey": 35,
+    "Thang": 11,
+    "Quy": 4,
+    "Nam": 2019
+  },
+  {
+    "ThoiGianKey": 36,
+    "Thang": 12,
+    "Quy": 4,
+    "Nam": 2019
+  },
+  {
+    "ThoiGianKey": 37,
+    "Thang": 1,
+    "Quy": 1,
+    "Nam": 2020
+  },
+  {
+    "ThoiGianKey": 38,
+    "Thang": 2,
+    "Quy": 1,
+    "Nam": 2020
+  },
+  {
+    "ThoiGianKey": 39,
+    "Thang": 3,
+    "Quy": 1,
+    "Nam": 2020
+  },
+  {
+    "ThoiGianKey": 40,
+    "Thang": 4,
+    "Quy": 2,
+    "Nam": 2020
+  },
+  {
+    "ThoiGianKey": 41,
+    "Thang": 5,
+    "Quy": 2,
+    "Nam": 2020
+  },
+  {
+    "ThoiGianKey": 42,
+    "Thang": 6,
+    "Quy": 2,
+    "Nam": 2020
+  },
+  {
+    "ThoiGianKey": 43,
+    "Thang": 7,
+    "Quy": 3,
+    "Nam": 2020
+  },
+  {
+    "ThoiGianKey": 44,
+    "Thang": 8,
+    "Quy": 3,
+    "Nam": 2020
+  },
+  {
+    "ThoiGianKey": 45,
+    "Thang": 9,
+    "Quy": 3,
+    "Nam": 2020
+  },
+  {
+    "ThoiGianKey": 46,
+    "Thang": 10,
+    "Quy": 4,
+    "Nam": 2020
+  },
+  {
+    "ThoiGianKey": 47,
+    "Thang": 11,
+    "Quy": 4,
+    "Nam": 2020
+  },
+  {
+    "ThoiGianKey": 48,
+    "Thang": 12,
+    "Quy": 4,
+    "Nam": 2020
+  },
+  {
+    "ThoiGianKey": 49,
+    "Thang": 1,
+    "Quy": 1,
+    "Nam": 2021
+  },
+  {
+    "ThoiGianKey": 50,
+    "Thang": 2,
+    "Quy": 1,
+    "Nam": 2021
+  },
+  {
+    "ThoiGianKey": 51,
+    "Thang": 3,
+    "Quy": 1,
+    "Nam": 2021
+  },
+  {
+    "ThoiGianKey": 52,
+    "Thang": 4,
+    "Quy": 2,
+    "Nam": 2021
+  },
+  {
+    "ThoiGianKey": 53,
+    "Thang": 5,
+    "Quy": 2,
+    "Nam": 2021
+  },
+  {
+    "ThoiGianKey": 54,
+    "Thang": 6,
+    "Quy": 2,
+    "Nam": 2021
+  },
+  {
+    "ThoiGianKey": 55,
+    "Thang": 7,
+    "Quy": 3,
+    "Nam": 2021
+  },
+  {
+    "ThoiGianKey": 56,
+    "Thang": 8,
+    "Quy": 3,
+    "Nam": 2021
+  },
+  {
+    "ThoiGianKey": 57,
+    "Thang": 9,
+    "Quy": 3,
+    "Nam": 2021
+  },
+  {
+    "ThoiGianKey": 58,
+    "Thang": 10,
+    "Quy": 4,
+    "Nam": 2021
+  },
+  {
+    "ThoiGianKey": 59,
+    "Thang": 11,
+    "Quy": 4,
+    "Nam": 2021
+  },
+  {
+    "ThoiGianKey": 60,
+    "Thang": 12,
+    "Quy": 4,
+    "Nam": 2021
+  },
+  {
+    "ThoiGianKey": 61,
+    "Thang": 1,
+    "Quy": 1,
+    "Nam": 2022
+  },
+  {
+    "ThoiGianKey": 62,
+    "Thang": 2,
+    "Quy": 1,
+    "Nam": 2022
+  },
+  {
+    "ThoiGianKey": 63,
+    "Thang": 3,
+    "Quy": 1,
+    "Nam": 2022
+  },
+  {
+    "ThoiGianKey": 64,
+    "Thang": 4,
+    "Quy": 2,
+    "Nam": 2022
+  },
+  {
+    "ThoiGianKey": 65,
+    "Thang": 5,
+    "Quy": 2,
+    "Nam": 2022
+  },
+  {
+    "ThoiGianKey": 66,
+    "Thang": 6,
+    "Quy": 2,
+    "Nam": 2022
+  },
+  {
+    "ThoiGianKey": 67,
+    "Thang": 7,
+    "Quy": 3,
+    "Nam": 2022
+  },
+  {
+    "ThoiGianKey": 68,
+    "Thang": 8,
+    "Quy": 3,
+    "Nam": 2022
+  },
+  {
+    "ThoiGianKey": 69,
+    "Thang": 9,
+    "Quy": 3,
+    "Nam": 2022
+  },
+  {
+    "ThoiGianKey": 70,
+    "Thang": 10,
+    "Quy": 4,
+    "Nam": 2022
+  },
+  {
+    "ThoiGianKey": 71,
+    "Thang": 11,
+    "Quy": 4,
+    "Nam": 2022
+  },
+  {
+    "ThoiGianKey": 72,
+    "Thang": 12,
+    "Quy": 4,
+    "Nam": 2022
+  },
+  {
+    "ThoiGianKey": 73,
+    "Thang": 1,
+    "Quy": 1,
+    "Nam": 2023
+  },
+  {
+    "ThoiGianKey": 74,
+    "Thang": 2,
+    "Quy": 1,
+    "Nam": 2023
+  },
+  {
+    "ThoiGianKey": 75,
+    "Thang": 3,
+    "Quy": 1,
+    "Nam": 2023
+  },
+  {
+    "ThoiGianKey": 76,
+    "Thang": 4,
+    "Quy": 2,
+    "Nam": 2023
+  },
+  {
+    "ThoiGianKey": 77,
+    "Thang": 5,
+    "Quy": 2,
+    "Nam": 2023
+  },
+  {
+    "ThoiGianKey": 78,
+    "Thang": 6,
+    "Quy": 2,
+    "Nam": 2023
+  },
+  {
+    "ThoiGianKey": 79,
+    "Thang": 7,
+    "Quy": 3,
+    "Nam": 2023
+  },
+  {
+    "ThoiGianKey": 80,
+    "Thang": 8,
+    "Quy": 3,
+    "Nam": 2023
+  },
+  {
+    "ThoiGianKey": 81,
+    "Thang": 9,
+    "Quy": 3,
+    "Nam": 2023
+  },
+  {
+    "ThoiGianKey": 82,
+    "Thang": 10,
+    "Quy": 4,
+    "Nam": 2023
+  },
+  {
+    "ThoiGianKey": 83,
+    "Thang": 11,
+    "Quy": 4,
+    "Nam": 2023
+  },
+  {
+    "ThoiGianKey": 84,
+    "Thang": 12,
+    "Quy": 4,
+    "Nam": 2023
+  },
+  {
+    "ThoiGianKey": 85,
+    "Thang": 1,
+    "Quy": 1,
+    "Nam": 2024
+  },
+  {
+    "ThoiGianKey": 86,
+    "Thang": 2,
+    "Quy": 1,
+    "Nam": 2024
+  },
+  {
+    "ThoiGianKey": 87,
+    "Thang": 3,
+    "Quy": 1,
+    "Nam": 2024
+  },
+  {
+    "ThoiGianKey": 88,
+    "Thang": 4,
+    "Quy": 2,
+    "Nam": 2024
+  },
+  {
+    "ThoiGianKey": 89,
+    "Thang": 5,
+    "Quy": 2,
+    "Nam": 2024
+  },
+  {
+    "ThoiGianKey": 90,
+    "Thang": 6,
+    "Quy": 2,
+    "Nam": 2024
+  },
+  {
+    "ThoiGianKey": 91,
+    "Thang": 7,
+    "Quy": 3,
+    "Nam": 2024
+  },
+  {
+    "ThoiGianKey": 92,
+    "Thang": 8,
+    "Quy": 3,
+    "Nam": 2024
+  },
+  {
+    "ThoiGianKey": 93,
+    "Thang": 9,
+    "Quy": 3,
+    "Nam": 2024
+  },
+  {
+    "ThoiGianKey": 94,
+    "Thang": 10,
+    "Quy": 4,
+    "Nam": 2024
+  },
+  {
+    "ThoiGianKey": 95,
+    "Thang": 11,
+    "Quy": 4,
+    "Nam": 2024
+  },
+  {
+    "ThoiGianKey": 96,
+    "Thang": 12,
+    "Quy": 4,
+    "Nam": 2024
+  },
+  {
+    "ThoiGianKey": 97,
+    "Thang": 1,
+    "Quy": 1,
+    "Nam": 2025
+  },
+  {
+    "ThoiGianKey": 98,
+    "Thang": 2,
+    "Quy": 1,
+    "Nam": 2025
+  },
+  {
+    "ThoiGianKey": 99,
+    "Thang": 3,
+    "Quy": 1,
+    "Nam": 2025
+  },
+  {
+    "ThoiGianKey": 100,
+    "Thang": 4,
+    "Quy": 2,
+    "Nam": 2025
+  },
+  {
+    "ThoiGianKey": 101,
+    "Thang": 5,
+    "Quy": 2,
+    "Nam": 2025
+  },
+  {
+    "ThoiGianKey": 102,
+    "Thang": 6,
+    "Quy": 2,
+    "Nam": 2025
+  },
+  {
+    "ThoiGianKey": 103,
+    "Thang": 7,
+    "Quy": 3,
+    "Nam": 2025
+  },
+  {
+    "ThoiGianKey": 104,
+    "Thang": 8,
+    "Quy": 3,
+    "Nam": 2025
+  },
+  {
+    "ThoiGianKey": 105,
+    "Thang": 9,
+    "Quy": 3,
+    "Nam": 2025
+  },
+  {
+    "ThoiGianKey": 106,
+    "Thang": 10,
+    "Quy": 4,
+    "Nam": 2025
+  },
+  {
+    "ThoiGianKey": 107,
+    "Thang": 11,
+    "Quy": 4,
+    "Nam": 2025
+  },
+  {
+    "ThoiGianKey": 108,
+    "Thang": 12,
+    "Quy": 4,
+    "Nam": 2025
+  },
+  {
+    "ThoiGianKey": 109,
+    "Thang": 1,
+    "Quy": 1,
+    "Nam": 2026
+  },
+  {
+    "ThoiGianKey": 110,
+    "Thang": 2,
+    "Quy": 1,
+    "Nam": 2026
+  },
+  {
+    "ThoiGianKey": 111,
+    "Thang": 3,
+    "Quy": 1,
+    "Nam": 2026
+  },
+  {
+    "ThoiGianKey": 112,
+    "Thang": 4,
+    "Quy": 2,
+    "Nam": 2026
+  },
+  {
+    "ThoiGianKey": 113,
+    "Thang": 5,
+    "Quy": 2,
+    "Nam": 2026
+  },
+  {
+    "ThoiGianKey": 114,
+    "Thang": 6,
+    "Quy": 2,
+    "Nam": 2026
+  },
+  {
+    "ThoiGianKey": 115,
+    "Thang": 7,
+    "Quy": 3,
+    "Nam": 2026
+  },
+  {
+    "ThoiGianKey": 116,
+    "Thang": 8,
+    "Quy": 3,
+    "Nam": 2026
+  },
+  {
+    "ThoiGianKey": 117,
+    "Thang": 9,
+    "Quy": 3,
+    "Nam": 2026
+  },
+  {
+    "ThoiGianKey": 118,
+    "Thang": 10,
+    "Quy": 4,
+    "Nam": 2026
+  },
+  {
+    "ThoiGianKey": 119,
+    "Thang": 11,
+    "Quy": 4,
+    "Nam": 2026
+  },
+  {
+    "ThoiGianKey": 120,
+    "Thang": 12,
+    "Quy": 4,
+    "Nam": 2026
+  }
+]

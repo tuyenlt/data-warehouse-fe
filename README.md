@@ -1,16 +1,73 @@
-# React + Vite
+# Data Warehouse Analytics UI
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Frontend BI/OLAP demo built with React + Vite, using local dimension/fact JSON data.
 
-Currently, two official plugins are available:
+## Tech Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- React 19
+- Vite 8
+- ECharts (`echarts-for-react`)
+- React Router
+- Local star-schema-like data (`src/data`)
 
-## React Compiler
+## Run
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+npm install
+npm run dev
+```
 
-## Expanding the ESLint configuration
+Build production bundle:
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+npm run build
+```
+
+## Routes
+
+- `/` or `/dashboard`: Dashboard page
+- `/sale`: Sales analytics page
+- `/customer`: Not Found page (placeholder)
+- `/inventory`: Not Found page (placeholder)
+
+## Dashboard
+
+- KPI cards: Revenue, Order Quantity, Inventory Quantity
+- Time trend chart
+- Product top chart
+- Filters by time and location
+- Uses `SoTienBanRa` as revenue measure
+
+## Sales Analytics
+
+- 3 charts:
+  - Revenue by Time
+  - Quantity by Time
+  - Revenue by Product
+- Context menu (right click):
+  - Roll up / Drill down (time hierarchy)
+  - Pivot / Unpivot
+  - Open Slice & Dice panel
+- Time hierarchy: Month -> Quarter -> Year
+- Sales detail table keeps customer name (`TenKH`) and fact measures only
+- Fact measures:
+  - `SoLuong`
+  - `SoTienBanRa`
+  - `SoTienLai`
+  - `SoLaiTrungBinh`
+
+## Data Files
+
+Main files currently used by pages:
+
+- `src/data/dim_thoi_gian.json`
+- `src/data/dim_dia_diem.json`
+- `src/data/dim_cua_hang.json`
+- `src/data/dim_khach_hang.json`
+- `src/data/dim_mat_hang.json`
+- `src/data/fact_ban_hang.json`
+- `src/data/fact_ton_kho.json`
+
+Additional dataset available:
+
+- `src/data/fact_hanh_vi.json`

@@ -1,0 +1,282 @@
+[
+  {
+    "KhachHangKey": 1,
+    "TenKH": "Customer 001",
+    "DiaDiem": 1,
+    "NgayDatDauTien": "2017-01-15",
+    "LoaiKhachHang": "Tourist"
+  },
+  {
+    "KhachHangKey": 2,
+    "TenKH": "Customer 002",
+    "DiaDiem": 2,
+    "NgayDatDauTien": "2018-02-15",
+    "LoaiKhachHang": "Postal"
+  },
+  {
+    "KhachHangKey": 3,
+    "TenKH": "Customer 003",
+    "DiaDiem": 3,
+    "NgayDatDauTien": "2019-03-15",
+    "LoaiKhachHang": "Both"
+  },
+  {
+    "KhachHangKey": 4,
+    "TenKH": "Customer 004",
+    "DiaDiem": 4,
+    "NgayDatDauTien": "2017-04-15",
+    "LoaiKhachHang": "Tourist"
+  },
+  {
+    "KhachHangKey": 5,
+    "TenKH": "Customer 005",
+    "DiaDiem": 5,
+    "NgayDatDauTien": "2018-05-15",
+    "LoaiKhachHang": "Postal"
+  },
+  {
+    "KhachHangKey": 6,
+    "TenKH": "Customer 006",
+    "DiaDiem": 6,
+    "NgayDatDauTien": "2019-06-15",
+    "LoaiKhachHang": "Both"
+  },
+  {
+    "KhachHangKey": 7,
+    "TenKH": "Customer 007",
+    "DiaDiem": 7,
+    "NgayDatDauTien": "2017-07-15",
+    "LoaiKhachHang": "Tourist"
+  },
+  {
+    "KhachHangKey": 8,
+    "TenKH": "Customer 008",
+    "DiaDiem": 8,
+    "NgayDatDauTien": "2018-08-15",
+    "LoaiKhachHang": "Postal"
+  },
+  {
+    "KhachHangKey": 9,
+    "TenKH": "Customer 009",
+    "DiaDiem": 9,
+    "NgayDatDauTien": "2019-09-15",
+    "LoaiKhachHang": "Both"
+  },
+  {
+    "KhachHangKey": 10,
+    "TenKH": "Customer 010",
+    "DiaDiem": 10,
+    "NgayDatDauTien": "2017-10-15",
+    "LoaiKhachHang": "Tourist"
+  },
+  {
+    "KhachHangKey": 11,
+    "TenKH": "Customer 011",
+    "DiaDiem": 1,
+    "NgayDatDauTien": "2018-11-15",
+    "LoaiKhachHang": "Postal"
+  },
+  {
+    "KhachHangKey": 12,
+    "TenKH": "Customer 012",
+    "DiaDiem": 2,
+    "NgayDatDauTien": "2019-12-15",
+    "LoaiKhachHang": "Both"
+  },
+  {
+    "KhachHangKey": 13,
+    "TenKH": "Customer 013",
+    "DiaDiem": 3,
+    "NgayDatDauTien": "2017-01-15",
+    "LoaiKhachHang": "Tourist"
+  },
+  {
+    "KhachHangKey": 14,
+    "TenKH": "Customer 014",
+    "DiaDiem": 4,
+    "NgayDatDauTien": "2018-02-15",
+    "LoaiKhachHang": "Postal"
+  },
+  {
+    "KhachHangKey": 15,
+    "TenKH": "Customer 015",
+    "DiaDiem": 5,
+    "NgayDatDauTien": "2019-03-15",
+    "LoaiKhachHang": "Both"
+  },
+  {
+    "KhachHangKey": 16,
+    "TenKH": "Customer 016",
+    "DiaDiem": 6,
+    "NgayDatDauTien": "2017-04-15",
+    "LoaiKhachHang": "Tourist"
+  },
+  {
+    "KhachHangKey": 17,
+    "TenKH": "Customer 017",
+    "DiaDiem": 7,
+    "NgayDatDauTien": "2018-05-15",
+    "LoaiKhachHang": "Postal"
+  },
+  {
+    "KhachHangKey": 18,
+    "TenKH": "Customer 018",
+    "DiaDiem": 8,
+    "NgayDatDauTien": "2019-06-15",
+    "LoaiKhachHang": "Both"
+  },
+  {
+    "KhachHangKey": 19,
+    "TenKH": "Customer 019",
+    "DiaDiem": 9,
+    "NgayDatDauTien": "2017-07-15",
+    "LoaiKhachHang": "Tourist"
+  },
+  {
+    "KhachHangKey": 20,
+    "TenKH": "Customer 020",
+    "DiaDiem": 10,
+    "NgayDatDauTien": "2018-08-15",
+    "LoaiKhachHang": "Postal"
+  },
+  {
+    "KhachHangKey": 21,
+    "TenKH": "Customer 021",
+    "DiaDiem": 1,
+    "NgayDatDauTien": "2019-09-15",
+    "LoaiKhachHang": "Both"
+  },
+  {
+    "KhachHangKey": 22,
+    "TenKH": "Customer 022",
+    "DiaDiem": 2,
+    "NgayDatDauTien": "2017-10-15",
+    "LoaiKhachHang": "Tourist"
+  },
+  {
+    "KhachHangKey": 23,
+    "TenKH": "Customer 023",
+    "DiaDiem": 3,
+    "NgayDatDauTien": "2018-11-15",
+    "LoaiKhachHang": "Postal"
+  },
+  {
+    "KhachHangKey": 24,
+    "TenKH": "Customer 024",
+    "DiaDiem": 4,
+    "NgayDatDauTien": "2019-12-15",
+    "LoaiKhachHang": "Both"
+  },
+  {
+    "KhachHangKey": 25,
+    "TenKH": "Customer 025",
+    "DiaDiem": 5,
+    "NgayDatDauTien": "2017-01-15",
+    "LoaiKhachHang": "Tourist"
+  },
+  {
+    "KhachHangKey": 26,
+    "TenKH": "Customer 026",
+    "DiaDiem": 6,
+    "NgayDatDauTien": "2018-02-15",
+    "LoaiKhachHang": "Postal"
+  },
+  {
+    "KhachHangKey": 27,
+    "TenKH": "Customer 027",
+    "DiaDiem": 7,
+    "NgayDatDauTien": "2019-03-15",
+    "LoaiKhachHang": "Both"
+  },
+  {
+    "KhachHangKey": 28,
+    "TenKH": "Customer 028",
+    "DiaDiem": 8,
+    "NgayDatDauTien": "2017-04-15",
+    "LoaiKhachHang": "Tourist"
+  },
+  {
+    "KhachHangKey": 29,
+    "TenKH": "Customer 029",
+    "DiaDiem": 9,
+    "NgayDatDauTien": "2018-05-15",
+    "LoaiKhachHang": "Postal"
+  },
+  {
+    "KhachHangKey": 30,
+    "TenKH": "Customer 030",
+    "DiaDiem": 10,
+    "NgayDatDauTien": "2019-06-15",
+    "LoaiKhachHang": "Both"
+  },
+  {
+    "KhachHangKey": 31,
+    "TenKH": "Customer 031",
+    "DiaDiem": 1,
+    "NgayDatDauTien": "2017-07-15",
+    "LoaiKhachHang": "Tourist"
+  },
+  {
+    "KhachHangKey": 32,
+    "TenKH": "Customer 032",
+    "DiaDiem": 2,
+    "NgayDatDauTien": "2018-08-15",
+    "LoaiKhachHang": "Postal"
+  },
+  {
+    "KhachHangKey": 33,
+    "TenKH": "Customer 033",
+    "DiaDiem": 3,
+    "NgayDatDauTien": "2019-09-15",
+    "LoaiKhachHang": "Both"
+  },
+  {
+    "KhachHangKey": 34,
+    "TenKH": "Customer 034",
+    "DiaDiem": 4,
+    "NgayDatDauTien": "2017-10-15",
+    "LoaiKhachHang": "Tourist"
+  },
+  {
+    "KhachHangKey": 35,
+    "TenKH": "Customer 035",
+    "DiaDiem": 5,
+    "NgayDatDauTien": "2018-11-15",
+    "LoaiKhachHang": "Postal"
+  },
+  {
+    "KhachHangKey": 36,
+    "TenKH": "Customer 036",
+    "DiaDiem": 6,
+    "NgayDatDauTien": "2019-12-15",
+    "LoaiKhachHang": "Both"
+  },
+  {
+    "KhachHangKey": 37,
+    "TenKH": "Customer 037",
+    "DiaDiem": 7,
+    "NgayDatDauTien": "2017-01-15",
+    "LoaiKhachHang": "Tourist"
+  },
+  {
+    "KhachHangKey": 38,
+    "TenKH": "Customer 038",
+    "DiaDiem": 8,
+    "NgayDatDauTien": "2018-02-15",
+    "LoaiKhachHang": "Postal"
+  },
+  {
+    "KhachHangKey": 39,
+    "TenKH": "Customer 039",
+    "DiaDiem": 9,
+    "NgayDatDauTien": "2019-03-15",
+    "LoaiKhachHang": "Both"
+  },
+  {
+    "KhachHangKey": 40,
+    "TenKH": "Customer 040",
+    "DiaDiem": 10,
+    "NgayDatDauTien": "2017-04-15",
+    "LoaiKhachHang": "Tourist"
+  }
+]

@@ -3,10 +3,10 @@ import Topbar from "../components/Topbar";
 
 export default function RootLayout() {
   return (
-    <div className="h-screen w-screen flex flex-col overflow-hidden">
+    <div className="min-h-screen w-screen flex overflow-hidden bg-slate-50">
       <Topbar />
-      <div className="flex-1 overflow-auto bg-gray-50">
-        <div className="w-full h-full p-6">
+      <div className="flex-1 overflow-auto">
+        <div className="w-full min-h-screen p-5 md:p-6">
           <Outlet />
         </div>
       </div>
