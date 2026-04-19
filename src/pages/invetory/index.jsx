@@ -2,7 +2,6 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import ReactECharts from "echarts-for-react";
 import MultiSelect from "../../components/MultiSelect";
 import {
-  extractDimensionCaptions,
   extractDimensionValue,
   extractMeasureByName,
   getDimensionMembers,
@@ -168,6 +167,7 @@ export default function InventoryPage() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [optionsReady, setOptionsReady] = useState(false);
 
   const [allFactRows, setAllFactRows] = useState([]);
   const [tablePage, setTablePage] = useState(1);
@@ -316,6 +316,8 @@ export default function InventoryPage() {
         setStoreLocationMap(nextStoreLocationMap);
       } catch {
         // Keep options empty when metadata call fails.
+      } finally {
+        if (mounted) setOptionsReady(true);
       }
     }
 
@@ -526,6 +528,11 @@ export default function InventoryPage() {
   ]);
 
   useEffect(() => {
+    // Wait for dimension options to load before firing data query.
+    // Without this guard, the query fires with no year filter on mount,
+    // causing a full 370k-row unfiltered fetch that takes 2+ minutes.
+    if (!optionsReady) return;
+
     let mounted = true;
 
     async function loadData() {
@@ -533,13 +540,15 @@ export default function InventoryPage() {
       setError("");
 
       try {
+        // NOTE: MH.Description does not exist in the TonKho SSAS cube.
+        // Omitting it prevents the backend from resolving it to the same
+        // level as MH.ProductKey (duplicate hierarchy MDX error).
         const response = await queryOlapAllPages({
           factGroup: "TonKho",
           cube: "TonKho",
           measures: ["Inventory.Quantity", "Inventory.Value", "Inventory.Weight"],
           rows: [
             "MH.ProductKey",
-            "MH.Description",
             "MH.Size",
             "MH.Weight",
             "CH.StoreKey",
@@ -566,21 +575,20 @@ export default function InventoryPage() {
           return;
         }
 
+        // Use token-based extraction instead of fragile positional indices.
+        // SSAS may return columns in a different order than requested.
         const normalizedRows = (response.data || []).map((row) => {
-          const captions = extractDimensionCaptions(row).map((entry) => String(entry.value || "").trim());
-
-          const productKeyRaw = captions[0] || extractDimensionValue(row, ["productkey", "mat hang"]);
-          const descriptionRaw = captions[1] || extractDimensionValue(row, ["description", "mo ta"]);
-          const sizeRaw = captions[2] || extractDimensionValue(row, ["size", "kich thuoc"]);
-          const productWeightRaw = captions[3] || extractDimensionValue(row, ["weight", "trong luong"]);
-          const storeKeyRaw = captions[4] || extractDimensionValue(row, ["storekey", "cua hang"]);
-          const storeLocationKeyRaw = captions[5] || extractDimensionValue(row, ["locationkey", "dia diem"]);
-          const storePhoneRaw = captions[6] || extractDimensionValue(row, ["phone", "so dien thoai"]);
-          const stateRaw = captions[7] || extractDimensionValue(row, ["state", "bang"]);
-          const cityRaw = captions[8] || extractDimensionValue(row, ["city", "thanh pho"]);
-          const yearRaw = captions[9] || extractDimensionValue(row, ["year", "nam"]);
-          const quarterRaw = captions[10] || extractDimensionValue(row, ["quarter", "quy"]);
-          const monthRaw = captions[11] || extractDimensionValue(row, ["month", "thang"]);
+          const productKeyRaw = extractDimensionValue(row, ["productkey", "mat hang key"]);
+          const sizeRaw = extractDimensionValue(row, ["size", "kich thuoc"]);
+          const productWeightRaw = extractDimensionValue(row, ["weight", "trong luong"]);
+          const storeKeyRaw = extractDimensionValue(row, ["storekey", "cua hang key"]);
+          const storeLocationKeyRaw = extractDimensionValue(row, ["locationkey", "dia diem key"]);
+          const storePhoneRaw = extractDimensionValue(row, ["phone", "so dien thoai"]);
+          const stateRaw = extractDimensionValue(row, ["state", "bang"]);
+          const cityRaw = extractDimensionValue(row, ["city", "thanh pho"]);
+          const yearRaw = extractDimensionValue(row, ["year", "nam"]);
+          const quarterRaw = extractDimensionValue(row, ["quarter", "quy"]);
+          const monthRaw = extractDimensionValue(row, ["month", "thang"]);
 
           const year = parseYearMember(yearRaw);
           const quarter = parseQuarterMember(quarterRaw);
@@ -588,7 +596,7 @@ export default function InventoryPage() {
 
           return {
             productKey: productKeyRaw || "Unknown",
-            productDescription: descriptionRaw || "N/A",
+            productDescription: "N/A",
             productSize: sizeRaw || "N/A",
             productWeight: productWeightRaw || "N/A",
             storeKey: storeKeyRaw || "Unknown",
@@ -621,7 +629,7 @@ export default function InventoryPage() {
     return () => {
       mounted = false;
     };
-  }, [filters, measureRanges]);
+  }, [filters, measureRanges, optionsReady]);
 
   function applyFilters() {
     setAppliedFilters({
@@ -996,10 +1004,10 @@ export default function InventoryPage() {
                 <h4>Inventory Quantity Over Time</h4>
                 <button type="button" className="pivot-btn" onClick={() => setIsPivotQtyTime((previous) => !previous)}>Pivot</button>
               </div>
-              <ReactECharts notMerge={true}
+              <ReactECharts
+                notMerge={true}
                 key={`inventory-quantity-time-${timeLevel.key}-${isPivotQtyTime ? "pivot" : "base"}`}
                 option={quantityByTimeOption}
-                notMerge
                 style={{ height: "300px" }}
               />
               <MatrixTable matrix={quantityTimeMatrix} />

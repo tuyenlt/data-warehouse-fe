@@ -679,7 +679,7 @@ export default function Dashboard() {
       {error ? <p className="empty-message">{error}</p> : null}
       {loading ? <p className="empty-message">Loading dashboard data...</p> : null}
 
-      <section className="olap-kpis">
+      <section className="olap-kpis" style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
         <article className="kpi-card">
           <p>Revenue</p>
           <h2>{formatCurrencyUSD(kpis.revenue)}</h2>
@@ -687,10 +687,6 @@ export default function Dashboard() {
         <article className="kpi-card">
           <p>Sold Quantity</p>
           <h2>{formatNumber(kpis.quantity)}</h2>
-        </article>
-        <article className="kpi-card">
-          <p>Inventory Quantity</p>
-          <h2>{formatNumber(kpis.inventoryQty)}</h2>
         </article>
       </section>
 
