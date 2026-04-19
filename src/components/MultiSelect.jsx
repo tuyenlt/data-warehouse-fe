@@ -10,9 +10,11 @@ export default function MultiSelect({
   values,
   options,
   onChange,
-  placeholder = "All"
+  placeholder = "All",
+  searchable = true
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [searchText, setSearchText] = useState("");
   const rootRef = useRef(null);
 
   useEffect(() => {
@@ -28,12 +30,14 @@ export default function MultiSelect({
 
   const allValues = useMemo(() => options.map((item) => item.value), [options]);
 
+  const isAllSelected = !values || values.length === 0;
+
   const selected = useMemo(() => {
-    if (!values || values.length === 0) {
-      return toSet(allValues);
+    if (isAllSelected) {
+      return new Set();
     }
     return toSet(values);
-  }, [allValues, values]);
+  }, [isAllSelected, values]);
 
   const triggerLabel = useMemo(() => {
     if (!values || values.length === 0) {
@@ -45,7 +49,35 @@ export default function MultiSelect({
     return `${values.length} selected`;
   }, [options, placeholder, values]);
 
+  const visibleOptions = useMemo(() => {
+    if (!searchable) {
+      return options;
+    }
+
+    const keyword = searchText.trim().toLowerCase();
+    if (!keyword) {
+      return options;
+    }
+
+    return options.filter((item) => {
+      const labelText = String(item.label ?? "").toLowerCase();
+      const valueText = String(item.value ?? "").toLowerCase();
+      return labelText.includes(keyword) || valueText.includes(keyword);
+    });
+  }, [options, searchable, searchText]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setSearchText("");
+    }
+  }, [isOpen]);
+
   function toggleValue(value) {
+    if (isAllSelected) {
+      onChange([value]);
+      return;
+    }
+
     const nextSet = new Set(selected);
     if (nextSet.has(value)) {
       nextSet.delete(value);
@@ -53,7 +85,7 @@ export default function MultiSelect({
       nextSet.add(value);
     }
 
-    if (nextSet.size === allValues.length) {
+    if (nextSet.size === 0) {
       onChange([]);
       return;
     }
@@ -61,7 +93,7 @@ export default function MultiSelect({
     onChange([...nextSet]);
   }
 
-  function clearAll() {
+  function selectAll() {
     onChange([]);
   }
 
@@ -75,11 +107,27 @@ export default function MultiSelect({
 
       {isOpen ? (
         <div className="multi-select__menu" role="listbox" aria-label={label ?? "multi-filter"}>
-          <button type="button" className="multi-select__clear" onClick={clearAll}>
-            All
-          </button>
+          {searchable ? (
+            <div className="multi-select__search-wrap">
+              <input
+                type="text"
+                className="multi-select__search"
+                value={searchText}
+                onChange={(event) => setSearchText(event.target.value)}
+                placeholder="Type to search..."
+              />
+            </div>
+          ) : null}
+          <label className="multi-select__all">
+            <input
+              type="checkbox"
+              checked={isAllSelected}
+              onChange={selectAll}
+            />
+            <span>All</span>
+          </label>
           <ul>
-            {options.map((option) => (
+            {visibleOptions.map((option) => (
               <li key={option.value}>
                 <label className="multi-select__option">
                   <input
@@ -91,6 +139,9 @@ export default function MultiSelect({
                 </label>
               </li>
             ))}
+            {visibleOptions.length === 0 ? (
+              <li className="multi-select__empty">No matching option.</li>
+            ) : null}
           </ul>
         </div>
       ) : null}

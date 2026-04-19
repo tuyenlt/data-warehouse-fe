@@ -1,3 +1,27 @@
 @import "tailwindcss";
 
+:root {
+	--ui-surface: #f4f7fb;
+	--ui-text: #14243a;
+	--ui-muted: #4e6483;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	color: var(--ui-text);
+	font-family: "Space Grotesk", "Segoe UI", "Trebuchet MS", sans-serif;
+	background:
+		radial-gradient(circle at 8% 14%, #d6e8ff 0%, transparent 28%),
+		radial-gradient(circle at 88% 24%, #d8f8ef 0%, transparent 24%),
+		linear-gradient(160deg, #f9fcff 0%, var(--ui-surface) 100%);
+}
+
+a {
+	color: inherit;
+}
+
 

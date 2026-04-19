@@ -2,56 +2,64 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ReactECharts from "echarts-for-react";
 import MultiSelect from "../../components/MultiSelect";
-import dimDiaDiem from "../../data/dim_dia_diem.json";
-import dimThoiGian from "../../data/dim_thoi_gian.json";
-import dimCuaHang from "../../data/dim_cua_hang.json";
-import dimKhachHang from "../../data/dim_khach_hang.json";
-import factBanHang from "../../data/fact_ban_hang.json";
-import factTonKho from "../../data/fact_ton_kho.json";
+import {
+  extractDimensionCaptions,
+  extractDimensionValue,
+  extractMeasureByName,
+  getDimensionMembers,
+  queryOlapAllPages
+} from "../../services/api/olap";
+import {
+  formatAxisCurrency,
+  formatCurrencyUSD,
+  formatNumber,
+  getLatestMember,
+  sortDimensionLabel,
+  truncateMiddle
+} from "../olap-helpers";
 import "./dashboard.css";
 
-const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-function formatCurrency(number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0
-  }).format(number);
+function parseYearMember(raw) {
+  const text = String(raw || "").trim();
+  const yearMatch = text.match(/(19|20)\d{2}/);
+  if (yearMatch) return Number(yearMatch[0]);
+  const numberMatch = text.match(/\d+/);
+  return numberMatch ? Number(numberMatch[0]) : null;
 }
 
-function formatNumber(number) {
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(number);
+function parseQuarterMember(raw) {
+  const text = String(raw || "").trim();
+  const quarterMatch = text.match(/q\s*([1-4])/i);
+  if (quarterMatch) return Number(quarterMatch[1]);
+
+  const compact = text.replace(/\s+/g, "");
+  if (/^[1-4]$/.test(compact)) {
+    return Number(compact);
+  }
+
+  return null;
 }
 
-function percentClass(percent) {
-  if (percent == null) {
-    return "kpi-card__change--neutral";
-  }
-  if (percent <= -5) {
-    return "kpi-card__change--down";
-  }
-  if (percent > 0) {
-    return "kpi-card__change--up";
-  }
-  return "kpi-card__change--neutral";
+function parseMonthMember(raw) {
+  const text = String(raw || "").trim();
+  const numberMatch = text.match(/\d{1,2}/);
+  if (!numberMatch) return null;
+  const month = Number(numberMatch[0]);
+  return month >= 1 && month <= 12 ? month : null;
 }
 
-function percentText(percent) {
-  if (percent == null) {
-    return "No comparison";
-  }
-  if (percent > 0) {
-    return `▲ +${percent.toFixed(1)}% increase`;
-  }
-  if (percent < 0) {
-    return `▼ ${percent.toFixed(1)}% decrease`;
-  }
-  return "■ 0.0% unchanged";
+function isValidTimeParts(year, quarter, month) {
+  return Number.isFinite(year)
+    && Number.isFinite(quarter)
+    && Number.isFinite(month)
+    && year > 0
+    && quarter >= 1 && quarter <= 4
+    && month >= 1 && month <= 12;
 }
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const [isPivotRevenueTime, setIsPivotRevenueTime] = useState(false);
 
   const [selectedYears, setSelectedYears] = useState([]);
   const [selectedQuarters, setSelectedQuarters] = useState([]);
@@ -59,345 +67,656 @@ export default function Dashboard() {
   const [selectedStates, setSelectedStates] = useState([]);
   const [selectedCities, setSelectedCities] = useState([]);
 
-  const timeByKey = useMemo(() => {
-    const map = new Map();
-    dimThoiGian.forEach((item) => map.set(item.ThoiGianKey, item));
-    return map;
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const [kpis, setKpis] = useState({ revenue: 0, quantity: 0, inventoryQty: 0 });
+  const [salesRows, setSalesRows] = useState([]);
+  const [inventoryRows, setInventoryRows] = useState([]);
+  const [customerRows, setCustomerRows] = useState([]);
+
+  const [yearOptions, setYearOptions] = useState([]);
+  const [quarterOptions, setQuarterOptions] = useState([]);
+  const [monthOptions, setMonthOptions] = useState([]);
+  const [stateOptions, setStateOptions] = useState([]);
+  const [cityOptions, setCityOptions] = useState([]);
+  const [salesYearValues, setSalesYearValues] = useState([]);
+  const [inventoryYearValues, setInventoryYearValues] = useState([]);
+  const [behaviorTimeKeys, setBehaviorTimeKeys] = useState([]);
+
+  const [appliedFilters, setAppliedFilters] = useState({
+    years: [],
+    quarters: [],
+    months: [],
+    states: [],
+    cities: []
+  });
+
+  const defaultYear = useMemo(() => {
+    if (salesYearValues.length === 0 || inventoryYearValues.length === 0) {
+      return "";
+    }
+
+    const inventorySet = new Set(inventoryYearValues);
+    const overlap = salesYearValues.filter((year) => inventorySet.has(year));
+
+    if (overlap.length === 0) {
+      return "";
+    }
+
+    return getLatestMember(overlap.map((value) => ({ value, label: value })));
+  }, [inventoryYearValues, salesYearValues]);
+
+  // Load year/state options on mount.
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadOptions() {
+      try {
+        const [salesYearsResult, inventoryYearsResult, behaviorStatesResult, inventoryStatesResult] = await Promise.allSettled([
+          getDimensionMembers({
+            factGroup: "BanHang",
+            cube: "BanHang_MH_TG",
+            dimension: "TG.Year",
+            measure: "Sales.Amount"
+          }),
+          getDimensionMembers({
+            factGroup: "TonKho",
+            cube: "TonKho",
+            dimension: "TG.Year",
+            measure: "Inventory.Quantity"
+          }),
+          getDimensionMembers({
+            factGroup: "HanhVi",
+            cube: "HanhVi_KH",
+            dimension: "DD.State",
+            measure: "Behavior.TotalRevenue"
+          }),
+          getDimensionMembers({
+            factGroup: "TonKho",
+            cube: "TonKho",
+            dimension: "DD.State",
+            measure: "Inventory.Quantity"
+          })
+        ]);
+
+        if (!mounted) return;
+
+        const salesYears = salesYearsResult.status === "fulfilled" ? salesYearsResult.value : [];
+        const inventoryYears = inventoryYearsResult.status === "fulfilled" ? inventoryYearsResult.value : [];
+        const behaviorStates = behaviorStatesResult.status === "fulfilled" ? behaviorStatesResult.value : [];
+        const inventoryStates = inventoryStatesResult.status === "fulfilled" ? inventoryStatesResult.value : [];
+
+        const mergedYearsMap = new Map([...salesYears, ...inventoryYears].map((item) => [item.value, item.label]));
+        const mergedYears = [...mergedYearsMap.keys()]
+          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }))
+          .map((value) => ({ value, label: mergedYearsMap.get(value) || value }));
+
+        const mergedStatesMap = new Map([...behaviorStates, ...inventoryStates].map((item) => [item.value, item.label]));
+        const mergedStates = [...mergedStatesMap.keys()]
+          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }))
+          .map((value) => ({ value, label: mergedStatesMap.get(value) || value }));
+
+        setYearOptions(mergedYears);
+        setSalesYearValues(salesYears.map((item) => String(item.value)));
+        setInventoryYearValues(inventoryYears.map((item) => String(item.value)));
+        setStateOptions(mergedStates);
+      } catch {
+        // Keep options empty if metadata call fails.
+      }
+    }
+
+    loadOptions();
+    return () => { mounted = false; };
   }, []);
 
-  const storeByKey = useMemo(() => {
-    const map = new Map();
-    dimCuaHang.forEach((item) => map.set(item.CuaHangKey, item));
-    return map;
-  }, []);
+  // Load cities based on selected states
+  useEffect(() => {
+    let mounted = true;
 
-  const customerByKey = useMemo(() => {
-    const map = new Map();
-    dimKhachHang.forEach((item) => map.set(item.KhachHangKey, item));
-    return map;
-  }, []);
+    async function loadCities() {
+      try {
+        const filters = selectedStates.length > 0 ? [{ key: "DD.State", values: selectedStates }] : [];
+        const [behaviorCitiesResult, inventoryCitiesResult] = await Promise.allSettled([
+          getDimensionMembers({
+            factGroup: "HanhVi",
+            cube: "HanhVi_KH",
+            dimension: "DD.City",
+            measure: "Behavior.TotalRevenue",
+            filters
+          }),
+          getDimensionMembers({
+            factGroup: "TonKho",
+            cube: "TonKho",
+            dimension: "DD.City",
+            measure: "Inventory.Quantity",
+            filters
+          })
+        ]);
 
-  const locationByKey = useMemo(() => {
-    const map = new Map();
-    dimDiaDiem.forEach((item) => map.set(item.DiaDiemKey, item));
-    return map;
-  }, []);
+        const behaviorCities = behaviorCitiesResult.status === "fulfilled" ? behaviorCitiesResult.value : [];
+        const inventoryCities = inventoryCitiesResult.status === "fulfilled" ? inventoryCitiesResult.value : [];
+        const cityMap = new Map([...behaviorCities, ...inventoryCities].map((item) => [item.value, item.label]));
+        const mergedCities = [...cityMap.keys()]
+          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }))
+          .map((value) => ({ value, label: cityMap.get(value) || value }));
 
-  const yearOptions = useMemo(() => {
-    const years = [...new Set(dimThoiGian.map((item) => item.Nam))].sort((a, b) => b - a);
-    return years.map((year) => ({ value: String(year), label: String(year) }));
-  }, []);
+        if (!mounted) return;
+        setCityOptions(mergedCities);
+      } catch {
+        if (mounted) setCityOptions([]);
+      }
+    }
 
-  const quarterOptions = useMemo(() => {
-    const quarters = [...new Set(dimThoiGian
-      .filter((item) => selectedYears.length === 0 || selectedYears.includes(String(item.Nam)))
-      .map((item) => item.Quy))].sort((a, b) => a - b);
-
-    return quarters.map((q) => ({ value: String(q), label: `Q${q}` }));
-  }, [selectedYears]);
-
-  const monthOptions = useMemo(() => {
-    const months = [...new Set(dimThoiGian
-      .filter((item) => (selectedYears.length === 0 || selectedYears.includes(String(item.Nam)))
-        && (selectedQuarters.length === 0 || selectedQuarters.includes(String(item.Quy))))
-      .map((item) => item.Thang))].sort((a, b) => a - b);
-
-    return months.map((month) => ({ value: String(month), label: MONTH_LABELS[month - 1] }));
-  }, [selectedQuarters, selectedYears]);
-
-  const stateOptions = useMemo(() => {
-    const states = [...new Set(dimDiaDiem.map((item) => item.Bang))].sort();
-    return states.map((state) => ({ value: state, label: state }));
-  }, []);
-
-  const cityOptions = useMemo(() => {
-    const source = selectedStates.length === 0
-      ? dimDiaDiem
-      : dimDiaDiem.filter((item) => selectedStates.includes(item.Bang));
-    const cities = [...new Set(source.map((item) => item.ThanhPho))].sort();
-    return cities.map((city) => ({ value: city, label: city }));
+    loadCities();
+    return () => { mounted = false; };
   }, [selectedStates]);
 
+  // Load dynamic quarter/month members from current selections.
   useEffect(() => {
-    const monthSet = new Set(monthOptions.map((item) => item.value));
-    setSelectedMonths((prev) => prev.filter((value) => monthSet.has(value)));
-  }, [monthOptions]);
+    let mounted = true;
+
+    async function loadTimeMembers() {
+      const quarterFilters = selectedYears.length > 0
+        ? [{ key: "TG.Year", values: selectedYears }]
+        : [];
+
+      const monthFilters = [...quarterFilters];
+      if (selectedQuarters.length > 0) {
+        monthFilters.push({ key: "TG.Quarter", values: selectedQuarters });
+      }
+
+      try {
+        const [salesQuartersResult, inventoryQuartersResult, salesMonthsResult, inventoryMonthsResult] = await Promise.allSettled([
+          getDimensionMembers({
+            factGroup: "BanHang",
+            cube: "BanHang_MH_TG",
+            dimension: "TG.Quarter",
+            measure: "Sales.Amount",
+            filters: quarterFilters
+          }),
+          getDimensionMembers({
+            factGroup: "TonKho",
+            cube: "TonKho",
+            dimension: "TG.Quarter",
+            measure: "Inventory.Quantity",
+            filters: quarterFilters
+          }),
+          getDimensionMembers({
+            factGroup: "BanHang",
+            cube: "BanHang_MH_TG",
+            dimension: "TG.Month",
+            measure: "Sales.Amount",
+            filters: monthFilters
+          }),
+          getDimensionMembers({
+            factGroup: "TonKho",
+            cube: "TonKho",
+            dimension: "TG.Month",
+            measure: "Inventory.Quantity",
+            filters: monthFilters
+          })
+        ]);
+
+        const salesQuarters = salesQuartersResult.status === "fulfilled" ? salesQuartersResult.value : [];
+        const inventoryQuarters = inventoryQuartersResult.status === "fulfilled" ? inventoryQuartersResult.value : [];
+        const salesMonths = salesMonthsResult.status === "fulfilled" ? salesMonthsResult.value : [];
+        const inventoryMonths = inventoryMonthsResult.status === "fulfilled" ? inventoryMonthsResult.value : [];
+
+        const quarterMap = new Map([...salesQuarters, ...inventoryQuarters].map((item) => [item.value, item.label]));
+        const monthMap = new Map([...salesMonths, ...inventoryMonths].map((item) => [item.value, item.label]));
+
+        const quarters = [...quarterMap.keys()]
+          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }))
+          .map((value) => ({ value, label: quarterMap.get(value) || value }));
+
+        const months = [...monthMap.keys()]
+          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }))
+          .map((value) => ({ value, label: monthMap.get(value) || value }));
+
+        if (!mounted) return;
+        setQuarterOptions(quarters);
+        setMonthOptions(months);
+      } catch {
+        if (mounted) {
+          setQuarterOptions([]);
+          setMonthOptions([]);
+        }
+      }
+    }
+
+    loadTimeMembers();
+    return () => { mounted = false; };
+  }, [selectedQuarters, selectedYears]);
+
+  // Auto-select default year only when Sales and Inventory share at least one year.
+  useEffect(() => {
+    if (!defaultYear) return;
+    setSelectedYears((prev) => (prev.length > 0 ? prev : [defaultYear]));
+    setAppliedFilters((prev) => (prev.years.length > 0 ? prev : { ...prev, years: [defaultYear] }));
+  }, [defaultYear]);
+
+  // Prune cities when state options change
+  useEffect(() => {
+    if (selectedCities.length === 0) return;
+    const valid = new Set(cityOptions.map((item) => item.value));
+    setSelectedCities((prev) => prev.filter((city) => valid.has(city)));
+  }, [cityOptions, selectedCities.length]);
 
   useEffect(() => {
-    const quarterSet = new Set(quarterOptions.map((item) => item.value));
-    setSelectedQuarters((prev) => prev.filter((value) => quarterSet.has(value)));
+    const validQuarters = new Set(quarterOptions.map((item) => item.value));
+    setSelectedQuarters((previous) => previous.filter((quarter) => validQuarters.has(quarter)));
   }, [quarterOptions]);
 
   useEffect(() => {
-    const citySet = new Set(cityOptions.map((item) => item.value));
-    setSelectedCities((prev) => prev.filter((value) => citySet.has(value)));
-  }, [cityOptions]);
+    const validMonths = new Set(monthOptions.map((item) => item.value));
+    setSelectedMonths((previous) => previous.filter((month) => validMonths.has(month)));
+  }, [monthOptions]);
 
-  function inTimeScope(timeKey) {
-    const time = timeByKey.get(timeKey);
-    if (!time) {
-      return false;
+  // Build filters for queries
+  const timeFilters = useMemo(() => {
+    const filters = [];
+    if (appliedFilters.years.length > 0) filters.push({ key: "TG.Year", values: appliedFilters.years });
+    if (appliedFilters.quarters.length > 0) filters.push({ key: "TG.Quarter", values: appliedFilters.quarters });
+    if (appliedFilters.months.length > 0) filters.push({ key: "TG.Month", values: appliedFilters.months });
+    return filters;
+  }, [appliedFilters.months, appliedFilters.quarters, appliedFilters.years]);
+
+  const locationFilters = useMemo(() => {
+    const filters = [];
+    if (appliedFilters.states.length > 0) filters.push({ key: "DD.State", values: appliedFilters.states });
+    if (appliedFilters.cities.length > 0) filters.push({ key: "DD.City", values: appliedFilters.cities });
+    return filters;
+  }, [appliedFilters.cities, appliedFilters.states]);
+
+  const hasTimeFilterSelection = useMemo(
+    () => appliedFilters.years.length > 0 || appliedFilters.quarters.length > 0 || appliedFilters.months.length > 0,
+    [appliedFilters.months.length, appliedFilters.quarters.length, appliedFilters.years.length]
+  );
+
+  const salesFilters = useMemo(() => [...timeFilters], [timeFilters]);
+  const inventoryFilters = useMemo(() => ([...timeFilters, ...locationFilters]), [locationFilters, timeFilters]);
+  const behaviorFilters = useMemo(() => {
+    const filters = [...locationFilters];
+
+    if (!hasTimeFilterSelection) {
+      return filters;
     }
 
-    if (selectedYears.length > 0 && !selectedYears.includes(String(time.Nam))) {
-      return false;
-    }
-    if (selectedQuarters.length > 0 && !selectedQuarters.includes(String(time.Quy))) {
-      return false;
-    }
-    if (selectedMonths.length > 0 && !selectedMonths.includes(String(time.Thang))) {
-      return false;
+    if (behaviorTimeKeys.length > 0) {
+      filters.push({ key: "KH.FirstOrderDate", values: behaviorTimeKeys });
+      return filters;
     }
 
-    return true;
-  }
+    // Force empty result when user applies time filters but behavior cube has no matching time keys.
+    filters.push({ key: "KH.FirstOrderDate", values: ["__NO_MATCH__"] });
+    return filters;
+  }, [behaviorTimeKeys, hasTimeFilterSelection, locationFilters]);
 
-  function inLocationScope(locationKey) {
-    const location = locationByKey.get(locationKey);
-    if (!location) {
-      return false;
-    }
+  useEffect(() => {
+    let mounted = true;
 
-    if (selectedStates.length > 0 && !selectedStates.includes(location.Bang)) {
-      return false;
-    }
-    if (selectedCities.length > 0 && !selectedCities.includes(location.ThanhPho)) {
-      return false;
-    }
-
-    return true;
-  }
-
-  const filteredSales = useMemo(() => {
-    return factBanHang.filter((row) => {
-      if (!inTimeScope(row.ThoiGianKey)) {
-        return false;
-      }
-      const customer = customerByKey.get(row.KhachHangKey);
-      if (!customer) {
-        return false;
-      }
-      return inLocationScope(customer.DiaDiem);
-    });
-  }, [customerByKey, selectedCities, selectedMonths, selectedQuarters, selectedStates, selectedYears, timeByKey]);
-
-  const filteredInventory = useMemo(() => {
-    return factTonKho.filter((row) => {
-      if (!inTimeScope(row.ThoiGianKey)) {
-        return false;
-      }
-      const store = storeByKey.get(row.CuaHangKey);
-      if (!store) {
-        return false;
-      }
-      return inLocationScope(store.DiaDiemKey);
-    });
-  }, [selectedCities, selectedMonths, selectedQuarters, selectedStates, selectedYears, storeByKey, timeByKey]);
-
-  const groupedByTime = useMemo(() => {
-    const revenueMap = new Map();
-    const orderMap = new Map();
-    const inventoryMap = new Map();
-
-    filteredSales.forEach((row) => {
-      const revenue = row.SoTienBanRa;
-      revenueMap.set(row.ThoiGianKey, (revenueMap.get(row.ThoiGianKey) ?? 0) + revenue);
-      orderMap.set(row.ThoiGianKey, (orderMap.get(row.ThoiGianKey) ?? 0) + row.SoLuong);
-    });
-
-    filteredInventory.forEach((row) => {
-      inventoryMap.set(row.ThoiGianKey, (inventoryMap.get(row.ThoiGianKey) ?? 0) + row.SoLuongTon);
-    });
-
-    const timeKeys = [...new Set([...revenueMap.keys(), ...inventoryMap.keys()])].sort((a, b) => a - b);
-
-    return { revenueMap, orderMap, inventoryMap, timeKeys };
-  }, [filteredInventory, filteredSales]);
-
-  function calculateChange(map) {
-    const keys = [...map.keys()].sort((a, b) => a - b);
-    if (keys.length < 2) {
-      return null;
-    }
-    const current = map.get(keys[keys.length - 1]) ?? 0;
-    const previous = map.get(keys[keys.length - 2]) ?? 0;
-    if (previous === 0) {
-      return null;
-    }
-    return ((current - previous) / previous) * 100;
-  }
-
-  const totals = useMemo(() => {
-    let revenue = 0;
-    let orders = 0;
-    let inventory = 0;
-
-    filteredSales.forEach((row) => {
-      revenue += row.SoTienBanRa;
-      orders += row.SoLuong;
-    });
-
-    filteredInventory.forEach((row) => {
-      inventory += row.SoLuongTon;
-    });
-
-    return {
-      revenue,
-      orders,
-      inventory,
-      revenueChange: calculateChange(groupedByTime.revenueMap),
-      ordersChange: calculateChange(groupedByTime.orderMap),
-      inventoryChange: calculateChange(groupedByTime.inventoryMap)
-    };
-  }, [filteredInventory, filteredSales, groupedByTime]);
-
-  const trendChart = useMemo(() => {
-    const keys = groupedByTime.timeKeys.slice(-24);
-    return {
-      labels: keys.map((timeKey) => {
-        const time = timeByKey.get(timeKey);
-        return time ? `${MONTH_LABELS[time.Thang - 1]} ${time.Nam}` : String(timeKey);
-      }),
-      values: keys.map((timeKey) => groupedByTime.revenueMap.get(timeKey) ?? 0)
-    };
-  }, [groupedByTime, timeByKey]);
-
-  const trendOption = useMemo(() => ({
-    tooltip: { trigger: "axis" },
-    grid: { top: 20, left: 40, right: 16, bottom: 28 },
-    xAxis: { type: "category", data: trendChart.labels, axisLabel: { fontSize: 10 } },
-    yAxis: { type: "value", axisLabel: { formatter: (value) => `$${Math.round(value / 1000)}k` } },
-    series: [
-      {
-        type: "line",
-        smooth: true,
-        data: trendChart.values,
-        lineStyle: { color: "#2f7ccc" },
-        areaStyle: { color: "rgba(47, 124, 204, 0.15)" },
-        showSymbol: false
-      }
-    ]
-  }), [trendChart]);
-
-  const topProducts = useMemo(() => {
-    const grouped = new Map();
-
-    filteredSales.forEach((row) => {
-      grouped.set(row.MatHangKey, (grouped.get(row.MatHangKey) ?? 0) + row.SoTienBanRa);
-    });
-
-    return [...grouped.entries()]
-      .map(([key, value]) => ({
-        key,
-        name: `# ${key}`,
-        value
-      }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 10);
-  }, [filteredSales]);
-
-  const topProductOption = useMemo(() => ({
-    tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
-    grid: { top: 18, left: 92, right: 12, bottom: 32 },
-    xAxis: { type: "value", axisLabel: { formatter: (value) => `$${Math.round(value / 1000)}k` } },
-    yAxis: { type: "category", data: topProducts.map((item) => item.name), axisLabel: { fontSize: 10 } },
-    series: [
-      {
-        type: "bar",
-        data: topProducts.map((item) => item.value),
-        itemStyle: { color: "#1e8f78", borderRadius: [0, 6, 6, 0] }
-      }
-    ]
-  }), [topProducts]);
-
-  const inventoryByStore = useMemo(() => {
-    const grouped = new Map();
-
-    filteredInventory.forEach((row) => {
-      const store = storeByKey.get(row.CuaHangKey);
-      if (!store) {
+    async function loadBehaviorTimeKeys() {
+      if (!hasTimeFilterSelection) {
+        if (mounted) setBehaviorTimeKeys([]);
         return;
       }
-      const location = locationByKey.get(store.DiaDiemKey);
-      const storeLabel = location ? `Store ${row.CuaHangKey} (${location.Bang})` : `Store ${row.CuaHangKey}`;
-      grouped.set(storeLabel, (grouped.get(storeLabel) ?? 0) + row.SoLuongTon);
+
+      try {
+        const response = await queryOlapAllPages({
+          factGroup: "HanhVi",
+          cube: "HanhVi_TG",
+          measures: ["Behavior.TotalRevenue"],
+          rows: ["TG.TimeKey"],
+          columns: [],
+          filters: timeFilters,
+          page: 1,
+          pageSize: 500
+        }, { pageSize: 500, maxPages: 200, useCache: false });
+
+        if (!mounted) return;
+
+        const keys = [...new Set((response?.data || [])
+          .map((row) => String(extractDimensionValue(row, ["timekey", "thoi gian key"]) || "").trim())
+          .filter(Boolean))];
+
+        setBehaviorTimeKeys(keys);
+      } catch {
+        if (mounted) setBehaviorTimeKeys([]);
+      }
+    }
+
+    loadBehaviorTimeKeys();
+    return () => { mounted = false; };
+  }, [hasTimeFilterSelection, timeFilters]);
+
+  // Load dashboard data
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadData() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const [salesResult, inventoryResult, customerResult] = await Promise.allSettled([
+          queryOlapAllPages({
+            factGroup: "BanHang",
+            cube: "BanHang_MH_TG",
+            measures: ["Sales.Amount", "Sales.Quantity"],
+            rows: ["MH.ProductKey", "MH.Description", "MH.Size", "MH.Weight", "TG.Year", "TG.Quarter", "TG.Month"],
+            columns: [],
+            filters: salesFilters,
+            page: 1,
+            pageSize: 500
+          }, { pageSize: 500, maxPages: 200, useCache: false }),
+          queryOlapAllPages({
+            factGroup: "TonKho",
+            cube: "TonKho",
+            measures: ["Inventory.Quantity"],
+            rows: ["DD.State", "DD.City", "TG.Year", "TG.Quarter", "TG.Month"],
+            columns: [],
+            filters: inventoryFilters,
+            page: 1,
+            pageSize: 500
+          }, { pageSize: 500, maxPages: 200, useCache: false }),
+          queryOlapAllPages({
+            factGroup: "HanhVi",
+            cube: "HanhVi_KH",
+            measures: ["Behavior.TotalItems"],
+            rows: ["DD.State", "DD.City", "KH.CustomerKey"],
+            columns: [],
+            filters: behaviorFilters,
+            page: 1,
+            pageSize: 500
+          }, { pageSize: 500, maxPages: 200, useCache: false })
+        ]);
+
+        if (!mounted) return;
+
+        const nextErrors = [];
+
+        if (salesResult.status === "fulfilled") {
+          const normalizedSalesRows = (salesResult.value.data || []).map((row) => {
+            const captions = extractDimensionCaptions(row).map((entry) => String(entry.value || "").trim());
+
+            const productKeyRaw = captions[0] || extractDimensionValue(row, ["productkey", "mat hang"]);
+            const yearRaw = captions[4] || extractDimensionValue(row, ["year", "nam"]);
+            const quarterRaw = captions[5] || extractDimensionValue(row, ["quarter", "quy"]);
+            const monthRaw = captions[6] || extractDimensionValue(row, ["month", "thang"]);
+
+            return {
+              productKey: productKeyRaw || "Unknown",
+              year: parseYearMember(yearRaw),
+              quarter: parseQuarterMember(quarterRaw),
+              month: parseMonthMember(monthRaw),
+              revenue: extractMeasureByName(row, "Sales.Amount"),
+              quantity: extractMeasureByName(row, "Sales.Quantity")
+            };
+          }).filter((row) => isValidTimeParts(row.year, row.quarter, row.month));
+
+          setSalesRows(normalizedSalesRows);
+        } else {
+          setSalesRows([]);
+          nextErrors.push("Sales data unavailable");
+        }
+
+        if (inventoryResult.status === "fulfilled") {
+          const normalizedInventoryRows = (inventoryResult.value.data || []).map((row) => {
+            const captions = extractDimensionCaptions(row).map((entry) => String(entry.value || "").trim());
+
+            const stateRaw = captions[0] || extractDimensionValue(row, ["state", "bang"]);
+            const cityRaw = captions[1] || extractDimensionValue(row, ["city", "thanh pho"]);
+            const yearRaw = captions[2] || extractDimensionValue(row, ["year", "nam"]);
+            const quarterRaw = captions[3] || extractDimensionValue(row, ["quarter", "quy"]);
+            const monthRaw = captions[4] || extractDimensionValue(row, ["month", "thang"]);
+
+            return {
+              state: stateRaw || "Unknown",
+              city: cityRaw || "Unknown",
+              year: parseYearMember(yearRaw),
+              quarter: parseQuarterMember(quarterRaw),
+              month: parseMonthMember(monthRaw),
+              quantity: extractMeasureByName(row, "Inventory.Quantity")
+            };
+          }).filter((row) => isValidTimeParts(row.year, row.quarter, row.month));
+
+          setInventoryRows(normalizedInventoryRows);
+        } else {
+          setInventoryRows([]);
+          nextErrors.push("Inventory data unavailable");
+        }
+
+        if (customerResult.status === "fulfilled") {
+          setCustomerRows((customerResult.value.data || []).map((row) => {
+            const captions = extractDimensionCaptions(row).map((entry) => String(entry.value || "").trim());
+            const stateRaw = captions[0] || extractDimensionValue(row, ["state", "bang"]);
+            const customerKeyRaw = captions[2] || extractDimensionValue(row, ["customerkey", "khach hang"]);
+
+            return {
+              state: stateRaw || "Unknown",
+              customerKey: customerKeyRaw || "Unknown",
+              items: extractMeasureByName(row, "Behavior.TotalItems")
+            };
+          }));
+        } else {
+          setCustomerRows([]);
+          nextErrors.push("Customer data unavailable");
+        }
+
+        setError(nextErrors.join(" | "));
+      } catch (err) {
+        if (mounted) setError(err.message || "Unable to load dashboard data.");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
+
+    loadData();
+    return () => { mounted = false; };
+  }, [behaviorFilters, inventoryFilters, salesFilters]);
+
+  function applyFilters() {
+    setAppliedFilters({
+      years: [...selectedYears],
+      quarters: [...selectedQuarters],
+      months: [...selectedMonths],
+      states: [...selectedStates],
+      cities: [...selectedCities]
+    });
+  }
+
+  function resetFilters() {
+    const defaultYears = defaultYear ? [defaultYear] : [];
+    setSelectedYears(defaultYears);
+    setSelectedQuarters([]);
+    setSelectedMonths([]);
+    setSelectedStates([]);
+    setSelectedCities([]);
+    setAppliedFilters({
+      years: [...defaultYears],
+      quarters: [],
+      months: [],
+      states: [],
+      cities: []
+    });
+  }
+
+  // ─── Computed data for charts ───
+  const revenueTrendRows = useMemo(() => {
+    const map = new Map();
+    salesRows.forEach((row) => {
+      const label = `${row.year}-Q${row.quarter}-M${row.month}`;
+      map.set(label, (map.get(label) || 0) + row.revenue);
+    });
+    return [...map.entries()]
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => sortDimensionLabel(a.label, b.label));
+  }, [salesRows]);
+
+  const topRevenueProductRows = useMemo(() => {
+    const map = new Map();
+    salesRows.forEach((row) => {
+      map.set(row.productKey, (map.get(row.productKey) || 0) + row.revenue);
+    });
+    return [...map.entries()]
+      .map(([label, value]) => ({ label, value, shortLabel: truncateMiddle(label, 18, 7, 5) }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 12);
+  }, [salesRows]);
+
+  const customerCountByStateRows = useMemo(() => {
+    const customerMap = new Map();
+    customerRows.forEach((row) => {
+      if (!customerMap.has(row.state)) customerMap.set(row.state, new Set());
+      customerMap.get(row.state).add(row.customerKey);
+    });
+    return [...customerMap.entries()]
+      .map(([label, set]) => ({ label, value: set.size }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 12);
+  }, [customerRows]);
+
+  const inventoryTrendRows = useMemo(() => {
+    const map = new Map();
+    inventoryRows.forEach((row) => {
+      const key = `${row.year}|${row.quarter}|${row.month}`;
+      const existing = map.get(key) || {
+        year: row.year,
+        quarter: row.quarter,
+        month: row.month,
+        value: 0
+      };
+      existing.value += row.quantity;
+      map.set(key, existing);
     });
 
-    return [...grouped.entries()]
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 10);
-  }, [filteredInventory, locationByKey, storeByKey]);
+    return [...map.values()]
+      .sort((a, b) => {
+        if (a.year !== b.year) return a.year - b.year;
+        if (a.quarter !== b.quarter) return a.quarter - b.quarter;
+        return a.month - b.month;
+      })
+      .map((item) => ({
+        label: `${item.year}-Q${item.quarter}-M${item.month}`,
+        value: item.value
+      }));
+  }, [inventoryRows]);
 
-  const inventoryOption = useMemo(() => ({
+  useEffect(() => {
+    setKpis({
+      revenue: salesRows.reduce((sum, row) => sum + row.revenue, 0),
+      quantity: salesRows.reduce((sum, row) => sum + row.quantity, 0),
+      inventoryQty: inventoryRows.reduce((sum, row) => sum + row.quantity, 0)
+    });
+  }, [inventoryRows, salesRows]);
+
+  // ─── Chart options ───
+  const revenueTrendOption = useMemo(() => {
+    if (isPivotRevenueTime) {
+      return {
+        tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
+        grid: { top: 24, left: 140, right: 16, bottom: 24 },
+        xAxis: { type: "value", axisLabel: { formatter: formatAxisCurrency } },
+        yAxis: { type: "category", data: revenueTrendRows.map((item) => item.label) },
+        series: [{ type: "bar", data: revenueTrendRows.map((item) => item.value), itemStyle: { color: "#0f4c81", borderRadius: [0, 6, 6, 0] } }]
+      };
+    }
+    return {
+      tooltip: { trigger: "axis" },
+      grid: { top: 24, left: 20, right: 16, bottom: 92 },
+      xAxis: { type: "category", data: revenueTrendRows.map((item) => item.label), axisLabel: { rotate: 28 } },
+      yAxis: { type: "value", axisLabel: { formatter: formatAxisCurrency } },
+      series: [{ type: "line", smooth: true, data: revenueTrendRows.map((item) => item.value), areaStyle: {}, itemStyle: { color: "#0f4c81" } }]
+    };
+  }, [isPivotRevenueTime, revenueTrendRows]);
+
+  const topRevenueProductOption = useMemo(() => ({
     tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
-    grid: { top: 18, left: 100, right: 12, bottom: 32 },
-    xAxis: { type: "value", axisLabel: { formatter: (value) => formatNumber(value) } },
-    yAxis: { type: "category", data: inventoryByStore.map((item) => item.name), axisLabel: { fontSize: 10 } },
-    series: [
-      {
-        type: "bar",
-        data: inventoryByStore.map((item) => item.value),
-        itemStyle: { color: "#2f7ccc", borderRadius: [0, 6, 6, 0] }
-      }
-    ]
-  }), [inventoryByStore]);
+    grid: { top: 22, left: 120, right: 16, bottom: 22 },
+    xAxis: { type: "value", axisLabel: { formatter: formatAxisCurrency } },
+    yAxis: { type: "category", data: topRevenueProductRows.map((item) => item.shortLabel) },
+    series: [{ type: "bar", data: topRevenueProductRows.map((item) => item.value), itemStyle: { color: "#2563eb", borderRadius: [0, 6, 6, 0] } }]
+  }), [topRevenueProductRows]);
+
+  const customerCountByStateOption = useMemo(() => ({
+    tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
+    grid: { top: 22, left: 120, right: 16, bottom: 22 },
+    xAxis: { type: "value" },
+    yAxis: { type: "category", data: customerCountByStateRows.map((item) => truncateMiddle(item.label, 16, 6, 4)) },
+    series: [{ type: "bar", data: customerCountByStateRows.map((item) => item.value), itemStyle: { color: "#0f766e", borderRadius: [0, 6, 6, 0] } }]
+  }), [customerCountByStateRows]);
+
+  const inventoryTrendOption = useMemo(() => ({
+    tooltip: { trigger: "axis" },
+    grid: { top: 24, left: 20, right: 16, bottom: 92 },
+    xAxis: { type: "category", data: inventoryTrendRows.map((item) => item.label), axisLabel: { rotate: 28 } },
+    yAxis: { type: "value", axisLabel: { formatter: (value) => formatNumber(value) } },
+    series: [{ type: "line", smooth: true, data: inventoryTrendRows.map((item) => item.value), areaStyle: {}, itemStyle: { color: "#a16207" } }]
+  }), [inventoryTrendRows]);
 
   return (
-    <section className="dashboard-v2-page">
-      <header className="dashboard-v2-page__header">
-        <h1>Executive Dashboard</h1>
+    <section className="dashboard-v2-page olap-page">
+      <header className="olap-header">
+        <h1>Overview Dashboard</h1>
       </header>
 
-      <section className="dashboard-v2-filters">
-        <h3>Filters</h3>
+      <section className="olap-card">
+        <h3 className="olap-card__title">Filters</h3>
         <div className="dashboard-v2-filters__grid">
           <MultiSelect label="Year" values={selectedYears} options={yearOptions} onChange={setSelectedYears} />
           <MultiSelect label="Quarter" values={selectedQuarters} options={quarterOptions} onChange={setSelectedQuarters} />
           <MultiSelect label="Month" values={selectedMonths} options={monthOptions} onChange={setSelectedMonths} />
-          <MultiSelect label="State" values={selectedStates} options={stateOptions} onChange={(values) => {
-            setSelectedStates(values);
-            setSelectedCities([]);
-          }} />
+          <MultiSelect label="State" values={selectedStates} options={stateOptions} onChange={setSelectedStates} />
           <MultiSelect label="City" values={selectedCities} options={cityOptions} onChange={setSelectedCities} />
+        </div>
+        <div className="dashboard-v2-filters__actions">
+          <button type="button" className="filter-toggle-btn" onClick={applyFilters}>Filter</button>
+          <button type="button" className="filter-toggle-btn" onClick={resetFilters}>Reset</button>
         </div>
       </section>
 
-      <section className="dashboard-v2-kpis">
+      {error ? <p className="empty-message">{error}</p> : null}
+      {loading ? <p className="empty-message">Loading dashboard data...</p> : null}
+
+      <section className="olap-kpis">
         <article className="kpi-card">
           <p>Revenue</p>
-          <h2>{formatCurrency(totals.revenue)}</h2>
-          <span className={`kpi-card__change ${percentClass(totals.revenueChange)}`}>{percentText(totals.revenueChange)}</span>
+          <h2>{formatCurrencyUSD(kpis.revenue)}</h2>
         </article>
-
         <article className="kpi-card">
-          <p>Orders</p>
-          <h2>{formatNumber(totals.orders)}</h2>
-          <span className={`kpi-card__change ${percentClass(totals.ordersChange)}`}>{percentText(totals.ordersChange)}</span>
+          <p>Sold Quantity</p>
+          <h2>{formatNumber(kpis.quantity)}</h2>
         </article>
-
         <article className="kpi-card">
-          <p>Inventory</p>
-          <h2>{formatNumber(totals.inventory)}</h2>
-          <span className={`kpi-card__change ${percentClass(totals.inventoryChange)}`}>{percentText(totals.inventoryChange)}</span>
+          <p>Inventory Quantity</p>
+          <h2>{formatNumber(kpis.inventoryQty)}</h2>
         </article>
       </section>
 
-      <section className="dashboard-v2-mini-charts">
-        <article className="mini-chart-card" onClick={() => navigate("/sale")}> 
-          <h4>Revenue Trend</h4>
-          <ReactECharts option={trendOption} style={{ height: "220px" }} />
+      <section className="olap-charts">
+        <article className="mini-chart-card" onClick={() => navigate("/sale")}>
+          <div className="olap-chart-card__head">
+            <h4>Revenue Over Time</h4>
+            <button type="button" className="pivot-btn" onClick={(event) => { event.stopPropagation(); setIsPivotRevenueTime((prev) => !prev); }}>Pivot</button>
+          </div>
+          <ReactECharts notMerge={true} option={revenueTrendOption} style={{ height: "300px" }} />
         </article>
 
-        <article className="mini-chart-card" onClick={() => navigate("/sale")}> 
-          <h4>Top Products</h4>
-          <ReactECharts option={topProductOption} style={{ height: "220px" }} />
+        <article className="mini-chart-card" onClick={() => navigate("/sale")}>
+          <h4>Top Products by Revenue</h4>
+          <ReactECharts notMerge={true} option={topRevenueProductOption} style={{ height: "300px" }} />
         </article>
 
-        <article className="mini-chart-card" onClick={() => navigate("/inventory")}> 
-          <h4>Inventory by Store</h4>
-          <ReactECharts option={inventoryOption} style={{ height: "220px" }} />
+        {/* <article className="mini-chart-card" onClick={() => navigate("/customer")}>
+          <h4>Customers by State</h4>
+          <ReactECharts notMerge={true} option={customerCountByStateOption} style={{ height: "300px" }} />
         </article>
+
+        <article className="mini-chart-card" onClick={() => navigate("/inventory")}>
+          <h4>Inventory Over Time</h4>
+          <ReactECharts notMerge={true} option={inventoryTrendOption} style={{ height: "300px" }} />
+        </article> */}
       </section>
     </section>
   );

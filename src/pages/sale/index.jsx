@@ -1,846 +1,1066 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import ReactECharts from "echarts-for-react";
 import MultiSelect from "../../components/MultiSelect";
-import dimThoiGian from "../../data/dim_thoi_gian.json";
-import dimKhachHang from "../../data/dim_khach_hang.json";
-import dimMatHang from "../../data/dim_mat_hang.json";
-import factBanHang from "../../data/fact_ban_hang.json";
+import {
+  extractDimensionCaptions,
+  extractDimensionValue,
+  extractMeasureByName,
+  getDimensionMembers,
+  queryOlapAllPages
+} from "../../services/api/olap";
+import {
+  buildTimeSeriesByLevel,
+  formatAxisCurrency,
+  formatCurrencyUSD,
+  formatNumber,
+  getLatestMember,
+  truncateMiddle
+} from "../olap-helpers";
 import "./sale.css";
 
-const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const PAGE_SIZE = 12;
+const TIME_LEVELS = [
+  { label: "Year", key: "TG.Year" },
+  { label: "Quarter", key: "TG.Quarter" },
+  { label: "Month", key: "TG.Month" }
+];
 
-const FACT_MEASURE_LABELS = {
-  SoLuong: "Quantity",
-  SoTienBanRa: "Sales Amount",
-  SoTienLai: "Profit Amount",
-  SoLaiTrungBinh: "Average Profit Amount"
-};
+const MEASURE_COLUMNS = [
+  { key: "quantity", label: "Quantity" },
+  { key: "revenue", label: "Revenue ($)" },
+  { key: "profit", label: "Profit ($)" },
+  { key: "avgProfit", label: "Average Profit ($)" }
+];
 
-function formatCurrency(number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0
-  }).format(number);
+function parseYearMember(raw) {
+  const text = String(raw || "").trim();
+  const yearMatch = text.match(/(19|20)\d{2}/);
+  if (yearMatch) {
+    return Number(yearMatch[0]);
+  }
+
+  const numberMatch = text.match(/\d+/);
+  return numberMatch ? Number(numberMatch[0]) : null;
 }
 
-function formatNumber(number) {
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(number);
+function parseQuarterMember(raw) {
+  const text = String(raw || "").trim();
+  const quarterMatch = text.match(/q\s*([1-4])/i);
+  if (quarterMatch) {
+    return Number(quarterMatch[1]);
+  }
+
+  const numberMatch = text.match(/[1-4]/);
+  return numberMatch ? Number(numberMatch[0]) : null;
 }
 
-function aggregateByTimeLevel(filteredSales, timeByKey, metricFn, timeLevel) {
-  const map = new Map();
+function parseMonthMember(raw) {
+  const text = String(raw || "").trim();
+  const numberMatch = text.match(/\d{1,2}/);
+  if (!numberMatch) {
+    return null;
+  }
 
-  filteredSales.forEach((row) => {
-    const time = timeByKey.get(row.ThoiGianKey);
-    if (!time) {
-      return;
-    }
+  const month = Number(numberMatch[0]);
+  return month >= 1 && month <= 12 ? month : null;
+}
 
-    const key = timeLevel === 2
-      ? `${time.Nam}`
-      : timeLevel === 1
-        ? `${time.Nam}|${time.Quy}`
-        : `${time.Nam}|${time.Quy}|${time.Thang}`;
+function isValidTimeParts(year, quarter, month) {
+  return Number.isFinite(year)
+    && Number.isFinite(quarter)
+    && Number.isFinite(month)
+    && year > 0
+    && quarter >= 1
+    && quarter <= 4
+    && month >= 1
+    && month <= 12;
+}
 
-    const prev = map.get(key) ?? {
-      year: time.Nam,
-      quarter: time.Quy,
-      month: time.Thang,
-      value: 0
-    };
+function TimeMatrix({ data, pivot, valueFormatter }) {
+  if (data.mode === "year") {
+    return (
+      <div className="matrix-wrap">
+        <table className="matrix-table">
+          <thead>
+            <tr>
+              <th>Year</th>
+              <th>Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.seriesByYear.map((row) => (
+              <tr key={row.year}>
+                <td>{row.year}</td>
+                <td>{valueFormatter(row.values[0] || 0)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
 
-    prev.value += metricFn(row);
-    map.set(key, prev);
-  });
+  if (!pivot) {
+    return (
+      <div className="matrix-wrap">
+        <table className="matrix-table">
+          <thead>
+            <tr>
+              <th>Year</th>
+              {data.buckets.map((bucket) => <th key={bucket}>{bucket}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {data.seriesByYear.map((row) => (
+              <tr key={row.year}>
+                <td>{row.year}</td>
+                {row.values.map((value, idx) => <td key={`${row.year}-${idx}`}>{valueFormatter(value)}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
 
-  return [...map.values()].sort((a, b) => {
-    if (a.year !== b.year) {
-      return a.year - b.year;
-    }
-    if (a.quarter !== b.quarter) {
-      return a.quarter - b.quarter;
-    }
-    return a.month - b.month;
-  });
+  return (
+    <div className="matrix-wrap">
+      <table className="matrix-table">
+        <thead>
+          <tr>
+            <th>Bucket</th>
+            {data.years.map((year) => <th key={year}>{year}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {data.buckets.map((bucket, bucketIdx) => (
+            <tr key={bucket}>
+              <td>{bucket}</td>
+              {data.seriesByYear.map((row) => <td key={`${bucket}-${row.year}`}>{valueFormatter(row.values[bucketIdx] || 0)}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ProductMatrix({ rows, pivot, valueFormatter, valueHeader }) {
+  if (!pivot) {
+    return (
+      <div className="matrix-wrap">
+        <table className="matrix-table">
+          <thead>
+            <tr>
+              <th>Product Key</th>
+              <th>{valueHeader}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.label}>
+                <td>{row.label}</td>
+                <td>{valueFormatter(row.value)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  return (
+    <div className="matrix-wrap">
+      <table className="matrix-table">
+        <thead>
+          <tr>
+            <th>{valueHeader}</th>
+            {rows.map((row) => <th key={row.label}>{row.label}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>{valueHeader}</td>
+            {rows.map((row) => <td key={`${row.label}-value`}>{valueFormatter(row.value)}</td>)}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 export default function SalePage() {
+  const [timeLevelIndex, setTimeLevelIndex] = useState(2);
+  const [isPivotRevenueByTime, setIsPivotRevenueByTime] = useState(false);
+  const [isPivotQuantityByTime, setIsPivotQuantityByTime] = useState(false);
+  const [isPivotRevenueByProduct, setIsPivotRevenueByProduct] = useState(false);
+  const [isPivotAvgProfitByProduct, setIsPivotAvgProfitByProduct] = useState(false);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+
   const [selectedYears, setSelectedYears] = useState([]);
   const [selectedQuarters, setSelectedQuarters] = useState([]);
   const [selectedMonths, setSelectedMonths] = useState([]);
   const [selectedProducts, setSelectedProducts] = useState([]);
-  const [timeLevel, setTimeLevel] = useState(0);
-  const [page, setPage] = useState(1);
 
-  const [chartMenu, setChartMenu] = useState(null);
-  const [showSliceDice, setShowSliceDice] = useState(false);
+  const [revenueRange, setRevenueRange] = useState({ min: "", max: "" });
+  const [quantityRange, setQuantityRange] = useState({ min: "", max: "" });
+  const [profitRange, setProfitRange] = useState({ min: "", max: "" });
 
-  const [pivotRevenueTime, setPivotRevenueTime] = useState(false);
-  const [pivotQtyTime, setPivotQtyTime] = useState(false);
-  const [pivotProductRevenue, setPivotProductRevenue] = useState(false);
+  const [visibleMeasureColumns, setVisibleMeasureColumns] = useState([]);
 
-  const projectionOptions = useMemo(() => {
-    const keys = Object.keys(factBanHang[0] ?? {});
-    const allowed = ["SoLuong", "SoTienBanRa", "SoTienLai", "SoLaiTrungBinh"];
-    return keys
-      .filter((key) => allowed.includes(key))
-      .map((key) => ({ value: key, label: FACT_MEASURE_LABELS[key] ?? key }));
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const [allFactRows, setAllFactRows] = useState([]);
+  const [tablePage, setTablePage] = useState(1);
+  const [expandedRowKeys, setExpandedRowKeys] = useState([]);
+
+  const [yearOptions, setYearOptions] = useState([]);
+  const [quarterOptions, setQuarterOptions] = useState([]);
+  const [monthOptions, setMonthOptions] = useState([]);
+  const [productOptions, setProductOptions] = useState([]);
+
+  const [appliedFilters, setAppliedFilters] = useState({
+    years: [],
+    quarters: [],
+    months: [],
+    products: [],
+    revenueMin: "",
+    revenueMax: "",
+    quantityMin: "",
+    quantityMax: "",
+    profitMin: "",
+    profitMax: ""
+  });
+
+  const timeLevel = TIME_LEVELS[timeLevelIndex] ?? TIME_LEVELS[2];
+  const latestYear = useMemo(() => getLatestMember(yearOptions), [yearOptions]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadOptions() {
+      if (!mounted) {
+        return;
+      }
+
+      try {
+        const [yearsResult, productsResult] = await Promise.allSettled([
+          getDimensionMembers({
+            factGroup: "BanHang",
+            cube: "BanHang_MH_TG",
+            dimension: "TG.Year",
+            measure: "Sales.Amount"
+          }),
+          getDimensionMembers({
+            factGroup: "BanHang",
+            cube: "BanHang_MH_TG",
+            dimension: "MH.ProductKey",
+            measure: "Sales.Amount"
+          })
+        ]);
+
+        if (!mounted) {
+          return;
+        }
+
+        if (yearsResult.status === "fulfilled") {
+          setYearOptions(yearsResult.value);
+        }
+
+        if (productsResult.status === "fulfilled") {
+          setProductOptions(productsResult.value);
+        }
+      } catch {
+        // Keep existing options on metadata failure.
+      }
+    }
+
+    loadOptions();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  const [visibleMeasureColumns, setVisibleMeasureColumns] = useState(() => projectionOptions.map((item) => item.value));
+  useEffect(() => {
+    let mounted = true;
 
-  const timeByKey = useMemo(() => {
-    const map = new Map();
-    dimThoiGian.forEach((item) => map.set(item.ThoiGianKey, item));
-    return map;
-  }, []);
+    async function loadTimeMembers() {
+      const quarterFilters = selectedYears.length > 0
+        ? [{ key: "TG.Year", values: selectedYears }]
+        : [];
 
-  const customerByKey = useMemo(() => {
-    const map = new Map();
-    dimKhachHang.forEach((item) => map.set(item.KhachHangKey, item));
-    return map;
-  }, []);
+      const monthFilters = [...quarterFilters];
+      if (selectedQuarters.length > 0) {
+        monthFilters.push({ key: "TG.Quarter", values: selectedQuarters });
+      }
 
-  const productByKey = useMemo(() => {
-    const map = new Map();
-    dimMatHang.forEach((item) => map.set(item.MatHangKey, item));
-    return map;
-  }, []);
+      try {
+        const [quarters, months] = await Promise.all([
+          getDimensionMembers({
+            factGroup: "BanHang",
+            cube: "BanHang_MH_TG",
+            dimension: "TG.Quarter",
+            measure: "Sales.Amount",
+            filters: quarterFilters
+          }),
+          getDimensionMembers({
+            factGroup: "BanHang",
+            cube: "BanHang_MH_TG",
+            dimension: "TG.Month",
+            measure: "Sales.Amount",
+            filters: monthFilters
+          })
+        ]);
 
-  const yearOptions = useMemo(() => {
-    const years = [...new Set(dimThoiGian.map((item) => item.Nam))].sort((a, b) => b - a);
-    return years.map((year) => ({ value: String(year), label: String(year) }));
-  }, []);
+        if (!mounted) {
+          return;
+        }
 
-  const quarterOptions = useMemo(() => {
-    const quarters = [...new Set(dimThoiGian
-      .filter((item) => selectedYears.length === 0 || selectedYears.includes(String(item.Nam)))
-      .map((item) => item.Quy))].sort((a, b) => a - b);
-    return quarters.map((q) => ({ value: String(q), label: `Q${q}` }));
-  }, [selectedYears]);
+        setQuarterOptions(quarters);
+        setMonthOptions(months);
+      } catch {
+        if (mounted) {
+          setQuarterOptions([]);
+          setMonthOptions([]);
+        }
+      }
+    }
 
-  const monthOptions = useMemo(() => {
-    const months = [...new Set(dimThoiGian
-      .filter((item) => (selectedYears.length === 0 || selectedYears.includes(String(item.Nam)))
-        && (selectedQuarters.length === 0 || selectedQuarters.includes(String(item.Quy))))
-      .map((item) => item.Thang))].sort((a, b) => a - b);
-
-    return months.map((month) => ({ value: String(month), label: MONTH_LABELS[month - 1] }));
+    loadTimeMembers();
+    return () => {
+      mounted = false;
+    };
   }, [selectedQuarters, selectedYears]);
 
-  const productOptions = useMemo(() => {
-    return dimMatHang
-      .map((item) => item.MatHangKey)
-      .sort((a, b) => a - b)
-      .map((id) => ({ value: String(id), label: `# ${id}` }));
-  }, []);
-
   useEffect(() => {
-    const monthSet = new Set(monthOptions.map((item) => item.value));
-    setSelectedMonths((prev) => prev.filter((value) => monthSet.has(value)));
-  }, [monthOptions]);
-
-  useEffect(() => {
-    const quarterSet = new Set(quarterOptions.map((item) => item.value));
-    setSelectedQuarters((prev) => prev.filter((value) => quarterSet.has(value)));
+    const validQuarters = new Set(quarterOptions.map((item) => item.value));
+    setSelectedQuarters((previous) => previous.filter((quarter) => validQuarters.has(quarter)));
   }, [quarterOptions]);
 
   useEffect(() => {
-    const valid = new Set(projectionOptions.map((item) => item.value));
-    setVisibleMeasureColumns((prev) => prev.filter((item) => valid.has(item)));
-  }, [projectionOptions]);
+    const validMonths = new Set(monthOptions.map((item) => item.value));
+    setSelectedMonths((previous) => previous.filter((month) => validMonths.has(month)));
+  }, [monthOptions]);
 
-  function inTimeScope(timeKey) {
-    const time = timeByKey.get(timeKey);
-    if (!time) {
-      return false;
+  useEffect(() => {
+    if (timeLevelIndex === 0) {
+      setSelectedQuarters([]);
+      setSelectedMonths([]);
     }
 
-    if (selectedYears.length > 0 && !selectedYears.includes(String(time.Nam))) {
-      return false;
+    if (timeLevelIndex === 1) {
+      setSelectedMonths([]);
     }
-    if (selectedQuarters.length > 0 && !selectedQuarters.includes(String(time.Quy))) {
-      return false;
+  }, [timeLevelIndex]);
+
+  const filters = useMemo(() => {
+    const next = [];
+
+    if (appliedFilters.years.length > 0) {
+      next.push({ key: "TG.Year", values: appliedFilters.years });
     }
-    if (selectedMonths.length > 0 && !selectedMonths.includes(String(time.Thang))) {
-      return false;
+    if (appliedFilters.quarters.length > 0) {
+      next.push({ key: "TG.Quarter", values: appliedFilters.quarters });
     }
-
-    return true;
-  }
-
-  const filteredSales = useMemo(() => {
-    return factBanHang.filter((row) => {
-      if (!inTimeScope(row.ThoiGianKey)) {
-        return false;
-      }
-      if (!productByKey.get(row.MatHangKey)) {
-        return false;
-      }
-      if (!customerByKey.get(row.KhachHangKey)) {
-        return false;
-      }
-      if (selectedProducts.length > 0 && !selectedProducts.includes(String(row.MatHangKey))) {
-        return false;
-      }
-      return true;
-    });
-  }, [customerByKey, productByKey, selectedMonths, selectedProducts, selectedQuarters, selectedYears, timeByKey]);
-
-  const kpis = useMemo(() => {
-    let revenue = 0;
-    let quantity = 0;
-    let profit = 0;
-    let avgProfitSum = 0;
-
-    filteredSales.forEach((row) => {
-      revenue += row.SoTienBanRa;
-      quantity += row.SoLuong;
-      profit += row.SoTienLai;
-      avgProfitSum += row.SoLaiTrungBinh;
-    });
-
-    return {
-      revenue,
-      quantity,
-      profit,
-      avgProfit: filteredSales.length === 0 ? 0 : avgProfitSum / filteredSales.length
-    };
-  }, [filteredSales]);
-
-  function openChartMenu(event, chartType) {
-    event.preventDefault();
-    setChartMenu({ x: event.clientX, y: event.clientY, chartType });
-  }
-
-  function menuItems() {
-    if (!chartMenu) {
-      return [];
+    if (appliedFilters.months.length > 0) {
+      next.push({ key: "TG.Month", values: appliedFilters.months });
+    }
+    if (appliedFilters.products.length > 0) {
+      next.push({ key: "MH.ProductKey", values: appliedFilters.products });
     }
 
-    const items = [];
-    const isTimeScope = chartMenu.chartType === "revenue-time" || chartMenu.chartType === "quantity-time" || chartMenu.chartType === "sale-detail";
+    return next;
+  }, [appliedFilters]);
 
-    if (isTimeScope && timeLevel < 2) {
-      items.push({
-        label: "Roll up",
-        action: () => {
-          setTimeLevel((prev) => {
-            const next = Math.min(2, prev + 1);
-            if (next >= 1) {
-              setSelectedMonths([]);
-            }
-            if (next >= 2) {
-              setSelectedQuarters([]);
-            }
-            return next;
-          });
-          setPage(1);
-        }
-      });
+  const measureRanges = useMemo(() => {
+    const ranges = {};
+
+    if (appliedFilters.revenueMin !== "" || appliedFilters.revenueMax !== "") {
+      ranges["Sales.Amount"] = {
+        min: appliedFilters.revenueMin === "" ? null : Number(appliedFilters.revenueMin),
+        max: appliedFilters.revenueMax === "" ? null : Number(appliedFilters.revenueMax)
+      };
     }
 
-    if (isTimeScope && timeLevel > 0) {
-      items.push({
-        label: "Drill down",
-        action: () => {
-          setTimeLevel((prev) => Math.max(0, prev - 1));
-          setPage(1);
-        }
-      });
+    if (appliedFilters.quantityMin !== "" || appliedFilters.quantityMax !== "") {
+      ranges["Sales.Quantity"] = {
+        min: appliedFilters.quantityMin === "" ? null : Number(appliedFilters.quantityMin),
+        max: appliedFilters.quantityMax === "" ? null : Number(appliedFilters.quantityMax)
+      };
     }
 
-    if (chartMenu.chartType === "revenue-time") {
-      items.push({ label: pivotRevenueTime ? "Unpivot" : "Pivot", action: () => setPivotRevenueTime((prev) => !prev) });
+    if (appliedFilters.profitMin !== "" || appliedFilters.profitMax !== "") {
+      ranges["Sales.Profit"] = {
+        min: appliedFilters.profitMin === "" ? null : Number(appliedFilters.profitMin),
+        max: appliedFilters.profitMax === "" ? null : Number(appliedFilters.profitMax)
+      };
     }
 
-    if (chartMenu.chartType === "quantity-time") {
-      items.push({ label: pivotQtyTime ? "Unpivot" : "Pivot", action: () => setPivotQtyTime((prev) => !prev) });
-    }
+    return ranges;
+  }, [
+    appliedFilters.profitMax,
+    appliedFilters.profitMin,
+    appliedFilters.quantityMax,
+    appliedFilters.quantityMin,
+    appliedFilters.revenueMax,
+    appliedFilters.revenueMin
+  ]);
 
-    if (chartMenu.chartType === "product-revenue") {
-      items.push({ label: pivotProductRevenue ? "Unpivot" : "Pivot", action: () => setPivotProductRevenue((prev) => !prev) });
-    }
+  useEffect(() => {
+    let mounted = true;
 
-    items.push({
-      label: "Slice & Dice",
-      action: () => setShowSliceDice(true)
-    });
+    async function loadData() {
+      setLoading(true);
+      setError("");
 
-    return items;
-  }
-
-  const timeSeriesBase = useMemo(() => {
-    const years = selectedYears.length > 0
-      ? selectedYears.map(Number).sort((a, b) => a - b).slice(-10)
-      : [...new Set(filteredSales
-        .map((row) => timeByKey.get(row.ThoiGianKey)?.Nam)
-        .filter(Boolean))].sort((a, b) => a - b).slice(-10);
-
-    const buckets = timeLevel === 0
-      ? MONTH_LABELS
-      : timeLevel === 1
-        ? ["Q1", "Q2", "Q3", "Q4"]
-        : years.map(String);
-
-    function byMetric(metricFn) {
-      if (timeLevel === 2) {
-        const yearly = new Map();
-        filteredSales.forEach((row) => {
-          const time = timeByKey.get(row.ThoiGianKey);
-          if (!time) {
-            return;
-          }
-          yearly.set(time.Nam, (yearly.get(time.Nam) ?? 0) + metricFn(row));
+      try {
+        const response = await queryOlapAllPages({
+          factGroup: "BanHang",
+          cube: "BanHang_MH_TG",
+          measures: ["Sales.Amount", "Sales.Quantity", "Sales.Profit", "Sales.AvgProfit"],
+          rows: ["MH.ProductKey", "MH.Description", "MH.Size", "MH.Weight", "TG.Year", "TG.Quarter", "TG.Month"],
+          columns: [],
+          filters,
+          measureRanges,
+          page: 1,
+          pageSize: 500
+        }, {
+          pageSize: 500,
+          maxPages: 200,
+          useCache: false
         });
 
-        const labels = [...yearly.keys()].sort((a, b) => a - b);
+        if (!mounted) {
+          return;
+        }
+
+        const normalizedRows = (response.data || []).map((row) => {
+          const captions = extractDimensionCaptions(row).map((entry) => String(entry.value || "").trim());
+
+          const productKeyRaw = captions[0] || extractDimensionValue(row, ["productkey", "mat hang"]);
+          const descriptionRaw = captions[1] || extractDimensionValue(row, ["description", "mo ta"]);
+          const sizeRaw = captions[2] || extractDimensionValue(row, ["size", "kich thuoc"]);
+          const productWeightRaw = captions[3] || extractDimensionValue(row, ["weight", "trong luong"]);
+          const yearRaw = captions[4] || extractDimensionValue(row, ["year", "nam"]);
+          const quarterRaw = captions[5] || extractDimensionValue(row, ["quarter", "quy"]);
+          const monthRaw = captions[6] || extractDimensionValue(row, ["month", "thang"]);
+
+          return {
+            productKey: productKeyRaw || "Unknown",
+            description: descriptionRaw || "N/A",
+            size: sizeRaw || "N/A",
+            productWeight: productWeightRaw || "N/A",
+            year: parseYearMember(yearRaw),
+            quarter: parseQuarterMember(quarterRaw),
+            month: parseMonthMember(monthRaw),
+            revenue: extractMeasureByName(row, "Sales.Amount"),
+            quantity: extractMeasureByName(row, "Sales.Quantity"),
+            profit: extractMeasureByName(row, "Sales.Profit"),
+            avgProfit: extractMeasureByName(row, "Sales.AvgProfit")
+          };
+        }).filter((row) => isValidTimeParts(row.year, row.quarter, row.month));
+
+        setAllFactRows(normalizedRows);
+      } catch (err) {
+        if (mounted) {
+          setError(err.message || "Failed to load Sales data.");
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadData();
+    return () => {
+      mounted = false;
+    };
+  }, [filters, measureRanges]);
+
+  useEffect(() => {
+    if (yearOptions.length > 0) {
+      return;
+    }
+
+    const fallbackYears = [...new Set(allFactRows.map((row) => row.year).filter((year) => year > 0))]
+      .sort((a, b) => a - b)
+      .map((value) => ({ value: String(value), label: String(value) }));
+
+    if (fallbackYears.length > 0) {
+      setYearOptions(fallbackYears);
+    }
+  }, [allFactRows, yearOptions.length]);
+
+  useEffect(() => {
+    if (!latestYear) {
+      return;
+    }
+
+    setSelectedYears((previous) => (previous.length > 0 ? previous : [latestYear]));
+    setAppliedFilters((previous) => (previous.years.length > 0 ? previous : { ...previous, years: [latestYear] }));
+  }, [latestYear]);
+
+  useEffect(() => {
+    if (productOptions.length > 0) {
+      return;
+    }
+
+    const fallbackProducts = [...new Set(allFactRows.map((row) => String(row.productKey || "")).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }))
+      .map((value) => ({ value, label: value }));
+
+    if (fallbackProducts.length > 0) {
+      setProductOptions(fallbackProducts);
+    }
+  }, [allFactRows, productOptions.length]);
+
+  useEffect(() => {
+    const validProducts = new Set(productOptions.map((item) => item.value));
+    setSelectedProducts((previous) => previous.filter((product) => validProducts.has(product)));
+  }, [productOptions]);
+
+  function applyFilters() {
+    setAppliedFilters({
+      years: [...selectedYears],
+      quarters: [...selectedQuarters],
+      months: [...selectedMonths],
+      products: [...selectedProducts],
+      revenueMin: revenueRange.min,
+      revenueMax: revenueRange.max,
+      quantityMin: quantityRange.min,
+      quantityMax: quantityRange.max,
+      profitMin: profitRange.min,
+      profitMax: profitRange.max
+    });
+  }
+
+  function resetFilters() {
+    const defaultYears = latestYear ? [latestYear] : [];
+
+    setSelectedYears(defaultYears);
+    setSelectedQuarters([]);
+    setSelectedMonths([]);
+    setSelectedProducts([]);
+    setRevenueRange({ min: "", max: "" });
+    setQuantityRange({ min: "", max: "" });
+    setProfitRange({ min: "", max: "" });
+    setAppliedFilters({
+      years: [...defaultYears],
+      quarters: [],
+      months: [],
+      products: [],
+      revenueMin: "",
+      revenueMax: "",
+      quantityMin: "",
+      quantityMax: "",
+      profitMin: "",
+      profitMax: ""
+    });
+  }
+
+  const filteredFactRows = useMemo(() => allFactRows, [allFactRows]);
+
+  const totals = useMemo(() => ({
+    revenue: filteredFactRows.reduce((sum, row) => sum + row.revenue, 0),
+    quantity: filteredFactRows.reduce((sum, row) => sum + row.quantity, 0),
+    profit: filteredFactRows.reduce((sum, row) => sum + row.profit, 0)
+  }), [filteredFactRows]);
+
+  const sortedFactRows = useMemo(
+    () => [...filteredFactRows].sort((a, b) => b.revenue - a.revenue),
+    [filteredFactRows]
+  );
+
+  const totalTablePages = useMemo(
+    () => Math.max(1, Math.ceil(sortedFactRows.length / 20)),
+    [sortedFactRows.length]
+  );
+
+  const pagedFactRows = useMemo(() => {
+    const start = (tablePage - 1) * 20;
+    return sortedFactRows.slice(start, start + 20);
+  }, [sortedFactRows, tablePage]);
+
+  useEffect(() => {
+    setTablePage(1);
+    setExpandedRowKeys([]);
+  }, [appliedFilters]);
+
+  useEffect(() => {
+    setTablePage((previous) => Math.min(previous, totalTablePages));
+  }, [totalTablePages]);
+
+  const revenueTimeData = useMemo(() => buildTimeSeriesByLevel(filteredFactRows, {
+    level: timeLevel.key,
+    getYear: (row) => row.year,
+    getQuarter: (row) => row.quarter,
+    getMonth: (row) => row.month,
+    getValue: (row) => row.revenue
+  }), [filteredFactRows, timeLevel.key]);
+
+  const quantityTimeData = useMemo(() => buildTimeSeriesByLevel(filteredFactRows, {
+    level: timeLevel.key,
+    getYear: (row) => row.year,
+    getQuarter: (row) => row.quarter,
+    getMonth: (row) => row.month,
+    getValue: (row) => row.quantity
+  }), [filteredFactRows, timeLevel.key]);
+
+  const productRevenueRows = useMemo(() => {
+    const map = new Map();
+    filteredFactRows.forEach((row) => {
+      map.set(row.productKey, (map.get(row.productKey) || 0) + row.revenue);
+    });
+
+    return [...map.entries()]
+      .map(([label, value]) => ({ label, value, shortLabel: truncateMiddle(label, 18, 7, 5) }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 12);
+  }, [filteredFactRows]);
+
+  const productAvgProfitRows = useMemo(() => {
+    const map = new Map();
+
+    filteredFactRows.forEach((row) => {
+      if (!map.has(row.productKey)) {
+        map.set(row.productKey, { sum: 0, count: 0 });
+      }
+      const current = map.get(row.productKey);
+      current.sum += row.avgProfit;
+      current.count += 1;
+    });
+
+    return [...map.entries()]
+      .map(([label, value]) => ({
+        label,
+        value: value.count > 0 ? value.sum / value.count : 0,
+        shortLabel: truncateMiddle(label, 18, 7, 5)
+      }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 12);
+  }, [filteredFactRows]);
+
+  function toggleExpandedRow(rowKey) {
+    setExpandedRowKeys((previous) => {
+      if (previous.includes(rowKey)) {
+        return [];
+      }
+      return [rowKey];
+    });
+  }
+
+  function buildTimeOption(data, pivot, color, valueFormatter) {
+    if (data.mode === "year") {
+      const values = data.seriesByYear.map((item) => item.values[0] || 0);
+      if (pivot) {
         return {
-          mode: "year",
-          xLabels: labels.map(String),
-          singleSeriesData: labels.map((year) => yearly.get(year) ?? 0),
-          matrixYears: [],
-          matrixBuckets: []
+          tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
+          grid: { top: 20, left: 120, right: 12, bottom: 24 },
+          xAxis: { type: "value", axisLabel: { formatter: valueFormatter } },
+          yAxis: { type: "category", data: data.years },
+          series: [{ type: "bar", data: values, itemStyle: { color, borderRadius: [0, 6, 6, 0] } }]
         };
       }
 
-      const grouped = new Map();
-      filteredSales.forEach((row) => {
-        const time = timeByKey.get(row.ThoiGianKey);
-        if (!time || !years.includes(time.Nam)) {
-          return;
-        }
-        const bucket = timeLevel === 1 ? time.Quy : time.Thang;
-        grouped.set(`${time.Nam}-${bucket}`, (grouped.get(`${time.Nam}-${bucket}`) ?? 0) + metricFn(row));
-      });
-
-      return {
-        mode: "matrix",
-        matrixYears: years,
-        matrixBuckets: buckets,
-        matrixValuesByYear: years.map((year) => ({
-          year,
-          values: buckets.map((_, idx) => grouped.get(`${year}-${idx + 1}`) ?? 0)
-        }))
-      };
-    }
-
-    return {
-      revenue: byMetric((row) => row.SoTienBanRa),
-      quantity: byMetric((row) => row.SoLuong)
-    };
-  }, [filteredSales, selectedYears, timeByKey, timeLevel]);
-
-  function legendFormatterWithRows(seriesNames) {
-    const nameToIndex = new Map(seriesNames.map((name, idx) => [name, idx]));
-    return (name) => {
-      const idx = nameToIndex.get(name) ?? -1;
-      if (idx >= 0 && (idx + 1) % 5 === 0) {
-        return `${name}\n`;
-      }
-      return name;
-    };
-  }
-
-  function buildTimeOption(color, dataSet, pivoted, axisLabelFormatter) {
-    if (dataSet.mode === "year") {
       return {
         tooltip: { trigger: "axis" },
-        grid: { top: 30, left: 48, right: 18, bottom: 32 },
-        xAxis: {
-          type: pivoted ? "value" : "category",
-          data: pivoted ? undefined : dataSet.xLabels,
-          axisLabel: pivoted ? { formatter: axisLabelFormatter } : undefined
-        },
-        yAxis: {
-          type: pivoted ? "category" : "value",
-          data: pivoted ? dataSet.xLabels : undefined,
-          axisLabel: pivoted ? undefined : { formatter: axisLabelFormatter }
-        },
-        series: [{ type: "bar", data: dataSet.singleSeriesData, itemStyle: { color, borderRadius: pivoted ? [0, 6, 6, 0] : [6, 6, 0, 0] } }]
+        xAxis: { type: "category", data: data.years },
+        yAxis: { type: "value", axisLabel: { formatter: valueFormatter } },
+        series: [{ type: "bar", data: values, itemStyle: { color } }]
       };
     }
 
-    const years = dataSet.matrixValuesByYear.map((series) => String(series.year));
+    if (!pivot) {
+      const seriesByYear = data.seriesByYear.map((item) => ({
+        name: `Year ${item.year}`,
+        type: "line",
+        smooth: true,
+        data: item.values
+      }));
 
-    if (!pivoted) {
       return {
         tooltip: { trigger: "axis" },
-        legend: { top: 0, formatter: legendFormatterWithRows(years) },
-        grid: { top: 54, left: 48, right: 18, bottom: 32 },
-        xAxis: { type: "category", data: dataSet.matrixBuckets },
-        yAxis: { type: "value", axisLabel: { formatter: axisLabelFormatter } },
-        series: dataSet.matrixValuesByYear.map((series) => ({
-          name: String(series.year),
-          type: "line",
-          smooth: true,
-          data: series.values
-        }))
+        legend: { top: 0, data: seriesByYear.map((item) => item.name) },
+        grid: { top: 40, left: 36, right: 12, bottom: 42 },
+        xAxis: { type: "category", data: data.buckets },
+        yAxis: { type: "value", axisLabel: { formatter: valueFormatter } },
+        series: seriesByYear
       };
     }
 
-    const bucketSeries = dataSet.matrixBuckets.map((bucket, bucketIdx) => ({
+    const bucketSeries = data.buckets.map((bucket, bucketIdx) => ({
       name: bucket,
-      values: dataSet.matrixYears.map((_, yearIdx) => dataSet.matrixValuesByYear[yearIdx]?.values[bucketIdx] ?? 0)
+      data: data.years.map((year, yearIdx) => [data.seriesByYear[yearIdx].values[bucketIdx] || 0, year])
     }));
 
     return {
       tooltip: { trigger: "item" },
-      legend: { top: 0, formatter: legendFormatterWithRows(bucketSeries.map((item) => item.name)) },
-      grid: { top: 54, left: 68, right: 18, bottom: 20 },
-      xAxis: { type: "value", axisLabel: { formatter: axisLabelFormatter } },
-      yAxis: { type: "category", data: dataSet.matrixYears.map(String) },
+      legend: { top: 0, data: bucketSeries.map((item) => item.name) },
+      grid: { top: 44, left: 74, right: 12, bottom: 20 },
+      xAxis: { type: "value", axisLabel: { formatter: valueFormatter } },
+      yAxis: { type: "category", data: data.years },
       series: bucketSeries.map((series) => ({
         name: series.name,
         type: "line",
         smooth: true,
-        symbolSize: 7,
-        data: dataSet.matrixYears.map((year, idx) => [series.values[idx] ?? 0, String(year)])
+        symbolSize: 6,
+        data: series.data
       }))
     };
   }
 
   const revenueByTimeOption = useMemo(
-    () => buildTimeOption("#2f7ccc", timeSeriesBase.revenue, pivotRevenueTime, (value) => `$${Math.round(value / 1000)}k`),
-    [pivotRevenueTime, timeSeriesBase]
+    () => buildTimeOption(revenueTimeData, isPivotRevenueByTime, "#1f4f8b", formatAxisCurrency),
+    [isPivotRevenueByTime, revenueTimeData]
   );
 
   const quantityByTimeOption = useMemo(
-    () => buildTimeOption("#1f8f84", timeSeriesBase.quantity, pivotQtyTime, (value) => formatNumber(value)),
-    [pivotQtyTime, timeSeriesBase]
+    () => buildTimeOption(quantityTimeData, isPivotQuantityByTime, "#0f766e", (value) => formatNumber(value)),
+    [isPivotQuantityByTime, quantityTimeData]
   );
 
-  const revenueByProductData = useMemo(() => {
-    const grouped = new Map();
-
-    filteredSales.forEach((row) => {
-      grouped.set(row.MatHangKey, (grouped.get(row.MatHangKey) ?? 0) + row.SoTienBanRa);
-    });
-
-    const sorted = [...grouped.entries()]
-      .map(([id, value]) => ({ id, label: `# ${id}`, value }))
-      .sort((a, b) => b.value - a.value);
-
-    const top10 = sorted.slice(0, 10);
-    const othersValue = sorted.slice(10).reduce((sum, item) => sum + item.value, 0);
-    if (othersValue > 0) {
-      top10.push({ id: -1, label: "Others", value: othersValue });
-    }
-
-    return top10;
-  }, [filteredSales]);
-
-  const revenueByProductOption = useMemo(() => {
-    const labels = revenueByProductData.map((item) => item.label);
-    const values = revenueByProductData.map((item) => item.value);
-
-    if (!pivotProductRevenue) {
+  function buildProductOption(rows, pivot, color, formatter) {
+    if (pivot) {
       return {
         tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
-        grid: { top: 20, left: 96, right: 16, bottom: 38 },
-        xAxis: { type: "value", axisLabel: { formatter: (value) => `$${Math.round(value / 1000)}k` } },
-        yAxis: { type: "category", data: labels },
-        series: [{ type: "bar", data: values, itemStyle: { color: "#7b57d6", borderRadius: [0, 6, 6, 0] } }]
+        grid: { top: 24, left: 24, right: 12, bottom: 88 },
+        xAxis: { type: "category", data: rows.map((item) => item.shortLabel), axisLabel: { rotate: 28 } },
+        yAxis: { type: "value", axisLabel: { formatter } },
+        series: [{ type: "bar", data: rows.map((item) => item.value), itemStyle: { color } }]
       };
     }
 
     return {
       tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
-      grid: { top: 20, left: 48, right: 16, bottom: 76 },
-      xAxis: { type: "category", data: labels, axisLabel: { rotate: 24 } },
-      yAxis: { type: "value", axisLabel: { formatter: (value) => `$${Math.round(value / 1000)}k` } },
-      series: [{ type: "bar", data: values, itemStyle: { color: "#7b57d6", borderRadius: [6, 6, 0, 0] } }]
+      grid: { top: 24, left: 130, right: 12, bottom: 22 },
+      xAxis: { type: "value", axisLabel: { formatter } },
+      yAxis: { type: "category", data: rows.map((item) => item.shortLabel), axisLabel: { fontSize: 10 } },
+      series: [{ type: "bar", data: rows.map((item) => item.value), itemStyle: { color, borderRadius: [0, 6, 6, 0] } }]
     };
-  }, [pivotProductRevenue, revenueByProductData]);
-
-  const revenueTimeRows = useMemo(
-    () => aggregateByTimeLevel(filteredSales, timeByKey, (row) => row.SoTienBanRa, timeLevel),
-    [filteredSales, timeByKey, timeLevel]
-  );
-
-  const quantityTimeRows = useMemo(
-    () => aggregateByTimeLevel(filteredSales, timeByKey, (row) => row.SoLuong, timeLevel),
-    [filteredSales, timeByKey, timeLevel]
-  );
-
-  const revenuePivotRows = useMemo(() => {
-    if (!pivotRevenueTime || timeSeriesBase.revenue.mode === "year") {
-      return [];
-    }
-
-    return timeSeriesBase.revenue.matrixYears.map((year, idx) => ({
-      year,
-      values: timeSeriesBase.revenue.matrixBuckets.map((_, bucketIdx) => timeSeriesBase.revenue.matrixValuesByYear[idx]?.values[bucketIdx] ?? 0)
-    }));
-  }, [pivotRevenueTime, timeSeriesBase.revenue]);
-
-  const quantityPivotRows = useMemo(() => {
-    if (!pivotQtyTime || timeSeriesBase.quantity.mode === "year") {
-      return [];
-    }
-
-    return timeSeriesBase.quantity.matrixYears.map((year, idx) => ({
-      year,
-      values: timeSeriesBase.quantity.matrixBuckets.map((_, bucketIdx) => timeSeriesBase.quantity.matrixValuesByYear[idx]?.values[bucketIdx] ?? 0)
-    }));
-  }, [pivotQtyTime, timeSeriesBase.quantity]);
-
-  const timeRevenueEvents = useMemo(() => ({
-    click: (params) => {
-      const targetYear = timeSeriesBase.revenue.mode === "year" ? Number(params?.name) : Number(params?.seriesName);
-      if (Number.isFinite(targetYear)) {
-        setSelectedYears([String(targetYear)]);
-      }
-    }
-  }), [timeSeriesBase.revenue.mode]);
-
-  const timeQuantityEvents = useMemo(() => ({
-    click: (params) => {
-      const targetYear = timeSeriesBase.quantity.mode === "year" ? Number(params?.name) : Number(params?.seriesName);
-      if (Number.isFinite(targetYear)) {
-        setSelectedYears([String(targetYear)]);
-      }
-    }
-  }), [timeSeriesBase.quantity.mode]);
-
-  const detailRows = useMemo(() => {
-    const grouped = new Map();
-
-    filteredSales.forEach((row) => {
-      const time = timeByKey.get(row.ThoiGianKey);
-      const customer = customerByKey.get(row.KhachHangKey);
-      if (!time || !customer) {
-        return;
-      }
-
-      const timeBucketKey = timeLevel === 2
-        ? `${time.Nam}`
-        : timeLevel === 1
-          ? `${time.Nam}|${time.Quy}`
-          : `${time.Nam}|${time.Quy}|${time.Thang}`;
-
-      const key = `${timeBucketKey}|${row.MatHangKey}|${customer.TenKH}`;
-
-      const prev = grouped.get(key) ?? {
-        productId: row.MatHangKey,
-        year: time.Nam,
-        quarter: time.Quy,
-        month: time.Thang,
-        customerName: customer.TenKH,
-        SoLuong: 0,
-        SoTienBanRa: 0,
-        SoTienLai: 0,
-        soLaiAcc: 0,
-        count: 0
-      };
-
-      prev.SoLuong += row.SoLuong;
-      prev.SoTienBanRa += row.SoTienBanRa;
-      prev.SoTienLai += row.SoTienLai;
-      prev.soLaiAcc += row.SoLaiTrungBinh;
-      prev.count += 1;
-
-      grouped.set(key, prev);
-    });
-
-    return [...grouped.values()]
-      .map((row) => ({
-        ...row,
-        SoLaiTrungBinh: row.count === 0 ? 0 : row.soLaiAcc / row.count
-      }))
-      .sort((a, b) => {
-        if (b.year !== a.year) {
-          return b.year - a.year;
-        }
-        if ((b.quarter ?? 0) !== (a.quarter ?? 0)) {
-          return (b.quarter ?? 0) - (a.quarter ?? 0);
-        }
-        if ((b.month ?? 0) !== (a.month ?? 0)) {
-          return (b.month ?? 0) - (a.month ?? 0);
-        }
-        if (a.productId !== b.productId) {
-          return a.productId - b.productId;
-        }
-        return a.customerName.localeCompare(b.customerName);
-      });
-  }, [customerByKey, filteredSales, timeByKey, timeLevel]);
-
-  const totalPages = Math.max(1, Math.ceil(detailRows.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const pagedRows = detailRows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-
-  function isVisible(measureKey) {
-    return visibleMeasureColumns.includes(measureKey);
   }
 
+  const revenueByProductOption = useMemo(
+    () => buildProductOption(productRevenueRows, isPivotRevenueByProduct, "#1456a0", formatAxisCurrency),
+    [isPivotRevenueByProduct, productRevenueRows]
+  );
+
+  const avgProfitByProductOption = useMemo(
+    () => buildProductOption(productAvgProfitRows, isPivotAvgProfitByProduct, "#a16207", formatAxisCurrency),
+    [isPivotAvgProfitByProduct, productAvgProfitRows]
+  );
+
+  const visibleMeasureSet = useMemo(() => {
+    if (visibleMeasureColumns.length === 0) {
+      return new Set(MEASURE_COLUMNS.map((item) => item.key));
+    }
+    return new Set(visibleMeasureColumns);
+  }, [visibleMeasureColumns]);
+
   return (
-    <section className="sale-v2-page" onClick={() => setChartMenu(null)}>
-      <header className="sale-v2-page__header">
-        <h1>Sales Analytics</h1>
+    <section className="sale-page olap-page">
+      <header className="olap-header">
+        <h1>Sales Analysis</h1>
+        <p>Sales metrics with chart-level pivot.</p>
       </header>
 
-      <div className={`sale-v2-layout ${showSliceDice ? "sale-v2-layout--panel-open" : ""}`}>
-        <div className="sale-v2-main">
-          <div className="sale-v2-cards">
-            <article className="sale-kpi-card">
-              <p>Total Revenue</p>
-              <h2>{formatCurrency(kpis.revenue)}</h2>
-            </article>
-            <article className="sale-kpi-card">
-              <p>Total Quantity</p>
-              <h2>{formatNumber(kpis.quantity)}</h2>
-            </article>
-            <article className="sale-kpi-card">
-              <p>Total Profit</p>
-              <h2>{formatCurrency(kpis.profit)}</h2>
-            </article>
-            <article className="sale-kpi-card">
-              <p>Average Profit Amount</p>
-              <h2>{formatCurrency(kpis.avgProfit)}</h2>
-            </article>
-          </div>
+      <div className="olap-layout-toolbar">
+        <button
+          type="button"
+          className="filter-toggle-btn"
+          onClick={() => setIsFilterOpen((previous) => !previous)}
+        >
+          {isFilterOpen ? "Hide Filters" : "Show Filters"}
+        </button>
+      </div>
 
-          <div className="sale-v2-charts">
-            <article className="sale-chart-card" onContextMenu={(event) => openChartMenu(event, "revenue-time")}>
-              <h3>Revenue by Time</h3>
-              <ReactECharts
-                key={`revenue-time-${timeLevel}-${pivotRevenueTime}-${selectedYears.join("|")}-${selectedQuarters.join("|")}-${selectedMonths.join("|")}`}
+      <div className={`olap-layout ${isFilterOpen ? "" : "olap-layout--panel-collapsed"}`}>
+        <div className="olap-main">
+          <section className="olap-card">
+            <h3 className="olap-card__title">Hierarchy</h3>
+            <div className="olap-hierarchy-grid">
+              <div className="hierarchy-control">
+                <div className="hierarchy-control__head">
+                  <strong>Time Hierarchy</strong>
+                  <span>{timeLevel.label}</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max={TIME_LEVELS.length - 1}
+                  value={timeLevelIndex}
+                  onChange={(event) => setTimeLevelIndex(Number(event.target.value))}
+                />
+                <div className="hierarchy-control__steps">
+                  {TIME_LEVELS.map((level) => <span key={level.key}>{level.label}</span>)}
+                </div>
+              </div>
+            </div>
+            {loading ? <p className="olap-loading-badge">Loading data...</p> : null}
+          </section>
+
+          <section className="olap-kpis">
+            <article className="olap-kpi">
+              <p>Revenue</p>
+              <h3>{formatCurrencyUSD(totals.revenue)}</h3>
+            </article>
+            <article className="olap-kpi">
+              <p>Sold Quantity</p>
+              <h3>{formatNumber(totals.quantity)}</h3>
+            </article>
+            <article className="olap-kpi">
+              <p>Profit</p>
+              <h3>{formatCurrencyUSD(totals.profit)}</h3>
+            </article>
+          </section>
+
+          {error ? <p className="empty-message">{error}</p> : null}
+
+          <section className="olap-charts">
+            <article className="olap-chart-card">
+              <div className="olap-chart-card__head">
+                <h4>Revenue Over Time</h4>
+                <button type="button" className="pivot-btn" onClick={() => setIsPivotRevenueByTime((previous) => !previous)}>Pivot</button>
+              </div>
+              <ReactECharts notMerge={true}
+                key={`sale-revenue-time-${timeLevel.key}-${isPivotRevenueByTime ? "pivot" : "base"}`}
                 option={revenueByTimeOption}
-                onEvents={timeRevenueEvents}
                 notMerge
-                style={{ height: showSliceDice ? "280px" : "300px" }}
+                style={{ height: "320px" }}
               />
-
-              <div className="chart-data-table">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>No.</th>
-                      <th>Year</th>
-                      {!pivotRevenueTime && timeLevel <= 1 ? <th>Quarter</th> : null}
-                      {!pivotRevenueTime && timeLevel === 0 ? <th>Month</th> : null}
-                      {!pivotRevenueTime ? <th>Revenue</th> : null}
-                      {pivotRevenueTime && timeSeriesBase.revenue.mode !== "year"
-                        ? timeSeriesBase.revenue.matrixBuckets.map((bucket) => <th key={`revenue-bucket-${bucket}`}>{bucket}</th>)
-                        : null}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(pivotRevenueTime && timeSeriesBase.revenue.mode !== "year" ? revenuePivotRows : revenueTimeRows).map((row, idx) => (
-                      <tr key={`revenue-row-${row.year}-${row.quarter ?? "x"}-${row.month ?? "x"}`}>
-                        <td>{idx + 1}</td>
-                        <td>{row.year}</td>
-                        {!pivotRevenueTime && timeLevel <= 1 ? <td>Q{row.quarter}</td> : null}
-                        {!pivotRevenueTime && timeLevel === 0 ? <td>{MONTH_LABELS[row.month - 1]}</td> : null}
-                        {!pivotRevenueTime ? <td>{formatCurrency(row.value)}</td> : null}
-                        {pivotRevenueTime && timeSeriesBase.revenue.mode !== "year"
-                          ? row.values.map((value, valueIdx) => <td key={`revenue-v-${idx}-${valueIdx}`}>{formatCurrency(value)}</td>)
-                          : null}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <TimeMatrix data={revenueTimeData} pivot={isPivotRevenueByTime} valueFormatter={formatCurrencyUSD} />
             </article>
 
-            <article className="sale-chart-card" onContextMenu={(event) => openChartMenu(event, "quantity-time")}>
-              <h3>Quantity Sold by Time</h3>
-              <ReactECharts
-                key={`quantity-time-${timeLevel}-${pivotQtyTime}-${selectedYears.join("|")}-${selectedQuarters.join("|")}-${selectedMonths.join("|")}`}
+            <article className="olap-chart-card">
+              <div className="olap-chart-card__head">
+                <h4>Quantity Over Time</h4>
+                <button type="button" className="pivot-btn" onClick={() => setIsPivotQuantityByTime((previous) => !previous)}>Pivot</button>
+              </div>
+              <ReactECharts notMerge={true}
+                key={`sale-quantity-time-${timeLevel.key}-${isPivotQuantityByTime ? "pivot" : "base"}`}
                 option={quantityByTimeOption}
-                onEvents={timeQuantityEvents}
                 notMerge
-                style={{ height: showSliceDice ? "280px" : "300px" }}
+                style={{ height: "320px" }}
               />
-
-              <div className="chart-data-table">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>No.</th>
-                      <th>Year</th>
-                      {!pivotQtyTime && timeLevel <= 1 ? <th>Quarter</th> : null}
-                      {!pivotQtyTime && timeLevel === 0 ? <th>Month</th> : null}
-                      {!pivotQtyTime ? <th>Quantity</th> : null}
-                      {pivotQtyTime && timeSeriesBase.quantity.mode !== "year"
-                        ? timeSeriesBase.quantity.matrixBuckets.map((bucket) => <th key={`quantity-bucket-${bucket}`}>{bucket}</th>)
-                        : null}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(pivotQtyTime && timeSeriesBase.quantity.mode !== "year" ? quantityPivotRows : quantityTimeRows).map((row, idx) => (
-                      <tr key={`quantity-row-${row.year}-${row.quarter ?? "x"}-${row.month ?? "x"}`}>
-                        <td>{idx + 1}</td>
-                        <td>{row.year}</td>
-                        {!pivotQtyTime && timeLevel <= 1 ? <td>Q{row.quarter}</td> : null}
-                        {!pivotQtyTime && timeLevel === 0 ? <td>{MONTH_LABELS[row.month - 1]}</td> : null}
-                        {!pivotQtyTime ? <td>{formatNumber(row.value)}</td> : null}
-                        {pivotQtyTime && timeSeriesBase.quantity.mode !== "year"
-                          ? row.values.map((value, valueIdx) => <td key={`quantity-v-${idx}-${valueIdx}`}>{formatNumber(value)}</td>)
-                          : null}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <TimeMatrix data={quantityTimeData} pivot={isPivotQuantityByTime} valueFormatter={formatNumber} />
             </article>
 
-            <article className="sale-chart-card" onContextMenu={(event) => openChartMenu(event, "product-revenue")}>
-              <h3>Revenue by Product</h3>
-              <ReactECharts
-                key={`product-revenue-${pivotProductRevenue}-${selectedYears.join("|")}-${selectedQuarters.join("|")}-${selectedMonths.join("|")}`}
-                option={revenueByProductOption}
-                notMerge
-                style={{ height: showSliceDice ? "280px" : "300px" }}
-              />
-
-              <div className="chart-data-table chart-data-table--tight">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>No.</th>
-                      <th>Product Id</th>
-                      <th>Revenue</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {revenueByProductData.map((row, idx) => (
-                      <tr
-                        key={`product-row-${row.id}-${idx}`}
-                        onClick={() => {
-                          if (row.id > 0) {
-                            setSelectedProducts([String(row.id)]);
-                          }
-                        }}
-                      >
-                        <td>{idx + 1}</td>
-                        <td>{row.id > 0 ? `# ${row.id}` : "Others"}</td>
-                        <td>{formatCurrency(row.value)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            <article className="olap-chart-card">
+              <div className="olap-chart-card__head">
+                <h4>Revenue by Product</h4>
+                <button type="button" className="pivot-btn" onClick={() => setIsPivotRevenueByProduct((previous) => !previous)}>Pivot</button>
               </div>
+              <ReactECharts notMerge={true} option={revenueByProductOption} style={{ height: "320px" }} />
+              <ProductMatrix
+                rows={productRevenueRows}
+                pivot={isPivotRevenueByProduct}
+                valueFormatter={formatCurrencyUSD}
+                valueHeader="Revenue"
+              />
             </article>
-          </div>
 
-          <article className="sale-v2-table-card" onContextMenu={(event) => openChartMenu(event, "sale-detail")}>
-            <h3>Sales Detail Data</h3>
-            <div className="sale-v2-table-wrap">
-              <table>
+            <article className="olap-chart-card">
+              <div className="olap-chart-card__head">
+                <h4>Avg Profit by Product</h4>
+                <button type="button" className="pivot-btn" onClick={() => setIsPivotAvgProfitByProduct((previous) => !previous)}>Pivot</button>
+              </div>
+              <ReactECharts notMerge={true} option={avgProfitByProductOption} style={{ height: "320px" }} />
+              <ProductMatrix
+                rows={productAvgProfitRows}
+                pivot={isPivotAvgProfitByProduct}
+                valueFormatter={formatCurrencyUSD}
+                valueHeader="Average Profit"
+              />
+            </article>
+          </section>
+
+          <section className="olap-card">
+            <h3 className="olap-card__title">Fact Rows</h3>
+            <div className="fact-table-wrap">
+              <table className="fact-table">
                 <thead>
                   <tr>
-                    <th>No.</th>
-                    <th>Product Id</th>
+                    <th>Product Key</th>
                     <th>Year</th>
-                    {timeLevel <= 1 ? <th>Quarter</th> : null}
-                    {timeLevel === 0 ? <th>Month</th> : null}
-                    <th>Customer</th>
-                    {isVisible("SoLuong") ? <th>Quantity</th> : null}
-                    {isVisible("SoTienBanRa") ? <th>Sales Amount</th> : null}
-                    {isVisible("SoTienLai") ? <th>Profit Amount</th> : null}
-                    {isVisible("SoLaiTrungBinh") ? <th>Average Profit Amount</th> : null}
+                    <th>Quarter</th>
+                    <th>Month</th>
+                    {visibleMeasureSet.has("quantity") ? <th className="num">Quantity</th> : null}
+                    {visibleMeasureSet.has("revenue") ? <th className="num">Revenue ($)</th> : null}
+                    {visibleMeasureSet.has("profit") ? <th className="num">Profit ($)</th> : null}
+                    {visibleMeasureSet.has("avgProfit") ? <th className="num">Average Profit ($)</th> : null}
                   </tr>
                 </thead>
                 <tbody>
-                  {pagedRows.map((row, idx) => (
-                    <tr key={`${safePage}-${idx}-${row.productId}-${row.customerName}-${row.year}-${row.month}`}>
-                      <td>{(safePage - 1) * PAGE_SIZE + idx + 1}</td>
-                      <td>{`# ${row.productId}`}</td>
-                      <td>{row.year}</td>
-                      {timeLevel <= 1 ? <td>Q{row.quarter}</td> : null}
-                      {timeLevel === 0 ? <td>{MONTH_LABELS[(row.month ?? 1) - 1]}</td> : null}
-                      <td>{row.customerName}</td>
-                      {isVisible("SoLuong") ? <td>{formatNumber(row.SoLuong)}</td> : null}
-                      {isVisible("SoTienBanRa") ? <td>{formatCurrency(row.SoTienBanRa)}</td> : null}
-                      {isVisible("SoTienLai") ? <td>{formatCurrency(row.SoTienLai)}</td> : null}
-                      {isVisible("SoLaiTrungBinh") ? <td>{formatCurrency(row.SoLaiTrungBinh)}</td> : null}
+                  {pagedFactRows.length > 0 ? pagedFactRows.map((row, index) => {
+                    const rowKey = `${row.productKey}-${row.year}-${row.quarter}-${row.month}-${index}`;
+                    const isExpanded = expandedRowKeys.includes(rowKey);
+
+                    return (
+                      <Fragment key={rowKey}>
+                        <tr>
+                          <td title={row.productKey}>
+                            <div className="fact-key-inline">
+                              <span className="fact-key-text">{row.productKey}</span>
+                              <button
+                                type="button"
+                                className="expand-btn fact-key-plus"
+                                onClick={() => toggleExpandedRow(rowKey)}
+                                aria-label={isExpanded ? "Collapse details" : "Expand details"}
+                              >
+                                {isExpanded ? "-" : "+"}
+                              </button>
+                            </div>
+                          </td>
+                          <td>{row.year}</td>
+                          <td>{`Q${row.quarter}`}</td>
+                          <td>{`M${row.month}`}</td>
+                          {visibleMeasureSet.has("quantity") ? <td className="num">{formatNumber(row.quantity)}</td> : null}
+                          {visibleMeasureSet.has("revenue") ? <td className="num">{formatCurrencyUSD(row.revenue)}</td> : null}
+                          {visibleMeasureSet.has("profit") ? <td className="num">{formatCurrencyUSD(row.profit)}</td> : null}
+                          {visibleMeasureSet.has("avgProfit") ? <td className="num">{formatCurrencyUSD(row.avgProfit)}</td> : null}
+                        </tr>
+                        {isExpanded ? (
+                          <tr className="expand-detail">
+                            <td colSpan={4 + [...visibleMeasureSet].length}>
+                              <div className="expand-detail__grid">
+                                <div className="expand-detail__item">
+                                  <span>Description</span>
+                                  <strong>{row.description}</strong>
+                                </div>
+                                <div className="expand-detail__item">
+                                  <span>Size</span>
+                                  <strong>{row.size}</strong>
+                                </div>
+                                <div className="expand-detail__item">
+                                  <span>Product Weight</span>
+                                  <strong>{row.productWeight}</strong>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
+                    );
+                  }) : (
+                    <tr>
+                      <td colSpan={4 + [...visibleMeasureSet].length} className="empty-message">No data available.</td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>
-
             <div className="table-pagination">
-              <button type="button" disabled={safePage <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>
+              <button
+                type="button"
+                onClick={() => setTablePage((previous) => Math.max(1, previous - 1))}
+                disabled={tablePage <= 1}
+              >
                 Prev
               </button>
-              <span>Page {safePage} / {totalPages}</span>
-              <button type="button" disabled={safePage >= totalPages} onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}>
+              <span>{`Page ${tablePage} / ${totalTablePages}`}</span>
+              <button
+                type="button"
+                onClick={() => setTablePage((previous) => Math.min(totalTablePages, previous + 1))}
+                disabled={tablePage >= totalTablePages}
+              >
                 Next
               </button>
             </div>
-          </article>
+          </section>
         </div>
 
-        {showSliceDice ? (
-          <aside className="slice-dice-panel">
-            <div className="slice-dice-panel__head">
-              <h4>Slice &amp; Dice</h4>
-              <button type="button" onClick={() => setShowSliceDice(false)}>x</button>
-            </div>
+        <aside className={`olap-panel ${isFilterOpen ? "" : "olap-panel--hidden"}`}>
+          <h3>Filters</h3>
 
-            <div className="slice-dice-panel__group">
-              <p>Time</p>
-              <MultiSelect label="Year" values={selectedYears} options={yearOptions} onChange={setSelectedYears} />
-              {timeLevel <= 1 ? (
-                <MultiSelect label="Quarter" values={selectedQuarters} options={quarterOptions} onChange={setSelectedQuarters} />
-              ) : null}
-              {timeLevel === 0 ? (
-                <MultiSelect label="Month" values={selectedMonths} options={monthOptions} onChange={setSelectedMonths} />
-              ) : null}
+          <div className="olap-panel-group">
+            <p className="olap-panel-group__title">Apply Filters</p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+              <button type="button" className="filter-toggle-btn" onClick={applyFilters}>Apply</button>
+              <button type="button" className="filter-toggle-btn" onClick={resetFilters}>Reset</button>
             </div>
+          </div>
 
-            <div className="slice-dice-panel__group">
-              <p>Entity</p>
-              <MultiSelect label="Product Id" values={selectedProducts} options={productOptions} onChange={setSelectedProducts} />
-            </div>
+          <div className="olap-panel-group">
+            <p className="olap-panel-group__title">Hierarchy Members</p>
+            <MultiSelect label="Year" values={selectedYears} options={yearOptions} onChange={setSelectedYears} />
+            {timeLevelIndex >= 1 ? (
+              <MultiSelect label="Quarter" values={selectedQuarters} options={quarterOptions} onChange={setSelectedQuarters} />
+            ) : null}
+            {timeLevelIndex >= 2 ? (
+              <MultiSelect label="Month" values={selectedMonths} options={monthOptions} onChange={setSelectedMonths} />
+            ) : null}
+            <MultiSelect label="Product Key" values={selectedProducts} options={productOptions} onChange={setSelectedProducts} />
+          </div>
 
-            <div className="slice-dice-panel__group">
-              <p>Projection: </p>
-              <div className="projection-list">
-                {projectionOptions.map((column) => (
-                  <label key={column.value} className="projection-item">
-                    <input
-                      type="checkbox"
-                      checked={visibleMeasureColumns.includes(column.value)}
-                      onChange={() => {
-                        setVisibleMeasureColumns((prev) => {
-                          if (prev.includes(column.value)) {
-                            return prev.filter((item) => item !== column.value);
-                          }
-                          return [...prev, column.value];
-                        });
-                      }}
-                    />
-                    <span>{column.label}</span>
-                  </label>
-                ))}
-              </div>
+          <div className="olap-panel-group">
+            <p className="olap-panel-group__title">Projection</p>
+            <MultiSelect
+              label="Visible Columns"
+              values={visibleMeasureColumns}
+              options={MEASURE_COLUMNS.map((item) => ({ value: item.key, label: item.label }))}
+              onChange={setVisibleMeasureColumns}
+            />
+          </div>
+
+          <div className="olap-panel-group">
+            <p className="olap-panel-group__title">Measure Ranges</p>
+            <div className="metric-range">
+              <label>
+                Revenue Min
+                <input
+                  type="number"
+                  value={revenueRange.min}
+                  onChange={(event) => setRevenueRange((prev) => ({ ...prev, min: event.target.value }))}
+                />
+              </label>
+              <label>
+                Revenue Max
+                <input
+                  type="number"
+                  value={revenueRange.max}
+                  onChange={(event) => setRevenueRange((prev) => ({ ...prev, max: event.target.value }))}
+                />
+              </label>
             </div>
-          </aside>
-        ) : null}
+            <div className="metric-range">
+              <label>
+                Quantity Min
+                <input
+                  type="number"
+                  value={quantityRange.min}
+                  onChange={(event) => setQuantityRange((prev) => ({ ...prev, min: event.target.value }))}
+                />
+              </label>
+              <label>
+                Quantity Max
+                <input
+                  type="number"
+                  value={quantityRange.max}
+                  onChange={(event) => setQuantityRange((prev) => ({ ...prev, max: event.target.value }))}
+                />
+              </label>
+            </div>
+            <div className="metric-range">
+              <label>
+                Profit Min
+                <input
+                  type="number"
+                  value={profitRange.min}
+                  onChange={(event) => setProfitRange((prev) => ({ ...prev, min: event.target.value }))}
+                />
+              </label>
+              <label>
+                Profit Max
+                <input
+                  type="number"
+                  value={profitRange.max}
+                  onChange={(event) => setProfitRange((prev) => ({ ...prev, max: event.target.value }))}
+                />
+              </label>
+            </div>
+          </div>
+        </aside>
       </div>
-
-      {chartMenu ? (
-        <ul className="chart-menu" style={{ top: `${chartMenu.y}px`, left: `${chartMenu.x}px` }}>
-          {menuItems().map((item) => (
-            <li key={item.label}>
-              <button
-                type="button"
-                onClick={() => {
-                  item.action();
-                  setChartMenu(null);
-                }}
-              >
-                {item.label}
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
     </section>
   );
 }

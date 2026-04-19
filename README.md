@@ -1,42 +1,43 @@
-# Data Warehouse Analytics UI
 
-Frontend BI/OLAP demo built with React + Vite, using local dimension/fact JSON data.
+# Data Warehouse Frontend (React)
+
+## Overview
+This is the frontend for the Data Warehouse & Mining project, built with React and Vite. It provides BI/OLAP dashboards and analytics using local JSON data and connects to the backend OLAP API.
 
 ## Tech Stack
-
 - React 19
 - Vite 8
-- ECharts (`echarts-for-react`)
+- ECharts (echarts-for-react)
 - React Router
-- Local star-schema-like data (`src/data`)
+- Local star-schema-like data (src/data)
 
-## Run
-
+## Getting Started
 ```bash
 npm install
 npm run dev
 ```
 
-Build production bundle:
-
+Build for production:
 ```bash
 npm run build
 ```
 
-## Routes
-
-- `/` or `/dashboard`: Dashboard page
+## Main Routes
+- `/dashboard`: Dashboard page (KPI, trend, product, filters)
 - `/sale`: Sales analytics page
-- `/customer`: Not Found page (placeholder)
-- `/inventory`: Not Found page (placeholder)
+- `/customer`: Customer analytics (placeholder)
+- `/inventory`: Inventory analytics (placeholder)
 
-## Dashboard
-
+## Features
 - KPI cards: Revenue, Order Quantity, Inventory Quantity
 - Time trend chart
 - Product top chart
 - Filters by time and location
 - Uses `SoTienBanRa` as revenue measure
+
+## Documentation
+- See `docs/dw-schema.md` for Data Warehouse schema
+- See `docs/idb-schema.md` for Integrated Database schema
 
 ## Sales Analytics
 

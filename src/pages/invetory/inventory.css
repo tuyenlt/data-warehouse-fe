@@ -1,338 +1,63 @@
+@import "../olap-common.css";
+
 .inventory-page {
-  color: #18263a;
-  display: grid;
-  gap: 1rem;
+  --accent: #166534;
+  --accent-soft: #dcfce7;
+  --accent-ink: #14532d;
 }
 
-.inventory-page__header {
-  background: linear-gradient(135deg, #f0fdf4 0%, #f0fef9 100%);
-  border: 1px solid #bbf7d0;
-  border-radius: 1rem;
-  padding: 1rem 1.1rem;
+/* Keep inventory layout stable when hierarchy level changes. */
+.inventory-page .hierarchy-control {
+  min-height: 7.2rem;
+  padding: 0.7rem;
 }
 
-.inventory-page__header h1 {
-  margin: 0;
-  font-size: 1.7rem;
-  color: #065f46;
+.inventory-page .hierarchy-control__head {
+  min-height: 1.35rem;
 }
 
-/* OLAP Controls */
-.inventory-olap-controls {
-  background: #ffffff;
-  border: 1px solid #dce6f3;
-  border-radius: 1rem;
-  padding: 1.2rem;
-  box-shadow: 0 8px 18px rgba(20, 46, 77, 0.08);
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 1.5rem;
-}
-
-.olap-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-}
-
-.olap-group h3 {
-  margin: 0;
-  color: #1b375d;
-  font-size: 0.95rem;
-  font-weight: 700;
-}
-
-.olap-buttons {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.olap-btn {
-  flex: 1;
-  min-width: 70px;
-  padding: 0.6rem;
-  background: #ffffff;
-  border: 1px solid #d8e4f2;
-  border-radius: 0.5rem;
-  color: #5c6d85;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-size: 0.85rem;
-}
-
-.olap-btn:hover {
-  background: #f0fdf4;
-  border-color: #1e8f78;
-  color: #1e8f78;
-}
-
-.olap-btn--active {
-  background: #1e8f78;
-  color: #ffffff;
-  border-color: #1e8f78;
-}
-
-.olap-select {
-  padding: 0.6rem;
-  background: #ffffff;
-  border: 1px solid #d8e4f2;
-  border-radius: 0.5rem;
-  color: #18263a;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.olap-select:hover,
-.olap-select:focus {
-  border-color: #1e8f78;
-  outline: none;
-}
-
-/* Filter Sections */
-.inventory-filters {
-  background: #ffffff;
-  border: 1px solid #dce6f3;
-  border-radius: 1rem;
-  padding: 1rem;
-  box-shadow: 0 8px 18px rgba(20, 46, 77, 0.08);
-}
-
-.inventory-filters h3 {
-  margin: 0 0 0.8rem;
-  color: #1b375d;
-  font-size: 0.95rem;
-  font-weight: 700;
-}
-
-.inventory-filters__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 0.6rem;
-}
-
-/* Sections */
-.inventory-section {
-  background: #ffffff;
-  border: 1px solid #dce6f3;
-  border-radius: 1rem;
-  padding: 1.2rem;
-  box-shadow: 0 8px 18px rgba(20, 46, 77, 0.08);
-}
-
-.inventory-section h2 {
-  margin: 0 0 1rem;
-  color: #065f46;
-  font-size: 1.1rem;
-}
-
-/* Chart */
-.inventory-chart-wrapper {
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-radius: 0.8rem;
-  padding: 1rem;
-  margin-bottom: 1.5rem;
-}
-
-/* Table Styles */
-.inventory-table-wrapper {
-  overflow-x: auto;
-  margin-bottom: 1rem;
-}
-
-.inventory-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.9rem;
-}
-
-.inventory-table thead {
-  background: #f0fdf4;
-  border-bottom: 2px solid #bbf7d0;
-}
-
-.inventory-table th {
-  padding: 0.75rem;
-  text-align: left;
-  color: #065f46;
-  font-weight: 700;
-}
-
-.inventory-table tbody tr {
-  border-bottom: 1px solid #eef2f9;
-  transition: background 0.2s;
-}
-
-.inventory-table tbody tr:hover {
-  background: #f9fef7;
-}
-
-.inventory-table td {
-  padding: 0.75rem;
-  color: #18263a;
-}
-
-.inventory-table .text-right {
-  text-align: right;
-}
-
-.inventory-table .text-center {
-  text-align: center;
-}
-
-.inventory-table .text-bold {
-  font-weight: 600;
-}
-
-.empty-message {
-  color: #8a94a6;
-  font-style: italic;
-  padding: 1.5rem !important;
-}
-
-/* Pagination */
-.inventory-pagination {
-  display: flex;
+.inventory-page .hierarchy-control__head span {
+  min-width: 5.1rem;
   justify-content: center;
-  align-items: center;
-  gap: 1rem;
-  margin-top: 1.2rem;
-  padding-top: 1rem;
-  border-top: 1px solid #eef2f9;
-}
-
-.pagination-btn {
-  padding: 0.5rem 1rem;
-  background: #ffffff;
-  border: 1px solid #d8e4f2;
-  border-radius: 0.5rem;
-  color: #1b375d;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.pagination-btn:hover:not(:disabled) {
-  background: #f0fdf4;
-  border-color: #1e8f78;
-  color: #1e8f78;
-}
-
-.pagination-btn:disabled {
-  color: #a0aebe;
-  border-color: #eef2f9;
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-.pagination-info {
-  color: #5c6d85;
-  font-weight: 600;
-  font-size: 0.9rem;
-  min-width: 120px;
   text-align: center;
 }
 
-/* Summary Cards */
-.inventory-summary {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
-  margin-top: 1.5rem;
-  padding-top: 1rem;
-  border-top: 1px solid #eef2f9;
+.inventory-page .olap-panel {
+  padding: 0.7rem;
 }
 
-.summary-card {
-  background: linear-gradient(135deg, #f0fdf4 0%, #f0fef9 100%);
-  border: 1px solid #bbf7d0;
-  border-radius: 0.8rem;
-  padding: 1rem;
-  text-align: center;
+/* Reserve space for groups that conditionally show extra filters (quarter/month/city). */
+.inventory-page .olap-panel .olap-panel-group:nth-of-type(2) {
+  min-height: 17.4rem;
 }
 
-.summary-card p {
-  margin: 0;
-  color: #5c6d85;
-  font-size: 0.85rem;
-  font-weight: 600;
+.inventory-page .olap-panel .olap-panel-group:nth-of-type(3) {
+  min-height: 7.4rem;
 }
 
-.summary-card h3 {
-  margin: 0.5rem 0 0;
-  color: #065f46;
-  font-size: 1.3rem;
+.inventory-page .multi-select__label {
+  min-height: 0.95rem;
 }
 
-/* Responsive */
-@media (max-width: 1200px) {
-  .inventory-olap-controls {
-    grid-template-columns: 1fr;
-  }
-
-  .inventory-summary {
-    grid-template-columns: repeat(2, 1fr);
-  }
+.inventory-page .multi-select__trigger {
+  min-height: 2rem;
+  height: 2rem;
+  padding: 0 0.52rem;
 }
 
-@media (max-width: 860px) {
-  .inventory-filters__grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .summary-card {
-    grid-column: span 1;
-  }
-
-  .olap-buttons {
-    gap: 0.3rem;
-  }
-
-  .olap-btn {
-    font-size: 0.75rem;
-    padding: 0.5rem;
-  }
+.inventory-page .multi-select__trigger > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-@media (max-width: 620px) {
-  .inventory-olap-controls {
-    gap: 1rem;
-  }
+.inventory-page .olap-chart-card__head {
+  min-height: 2rem;
+}
 
-  .olap-buttons {
-    flex-wrap: wrap;
-  }
-
-  .olap-btn {
-    flex: 0 1 calc(50% - 0.25rem);
-  }
-
-  .inventory-filters__grid {
-    grid-template-columns: 1fr;
-  }
-
-  .inventory-table {
-    font-size: 0.8rem;
-  }
-
-  .inventory-table th,
-  .inventory-table td {
-    padding: 0.5rem;
-  }
-
-  .inventory-pagination {
-    flex-wrap: wrap;
-  }
-
-  .pagination-info {
-    width: 100%;
-    order: 3;
-  }
-
-  .inventory-summary {
-    grid-template-columns: 1fr;
+@media (max-width: 980px) {
+  .inventory-page .olap-panel .olap-panel-group:nth-of-type(2),
+  .inventory-page .olap-panel .olap-panel-group:nth-of-type(3) {
+    min-height: 0;
   }
 }
