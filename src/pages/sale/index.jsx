@@ -427,7 +427,7 @@ export default function SalePage() {
         }, {
           pageSize: 500,
           maxPages: 200,
-          useCache: false
+          useCache: true
         });
 
         if (!mounted) {

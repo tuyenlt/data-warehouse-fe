@@ -232,7 +232,7 @@ export async function queryOlapAllPages(
     pageSize = 1000,
     maxPages = 200,
     useCache = true,
-    cacheTtlMs = 45_000
+    cacheTtlMs = 300_000
   } = {}
 ) {
   const effectiveRequestedPageSize = Math.max(Number(pageSize) || 0, MIN_ALL_PAGES_SIZE);

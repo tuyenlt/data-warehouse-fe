@@ -201,7 +201,7 @@ export default function CustomerPage() {
             measure: "Behavior.TotalRevenue",
             pageSize: 200,
             maxPages: 1,
-            useCache: false
+            useCache: true
           }),
           queryOlapAllPages({
             factGroup: "HanhVi",
@@ -496,7 +496,7 @@ export default function CustomerPage() {
         }, {
           pageSize: 500,
           maxPages: 200,
-          useCache: false
+          useCache: true
         });
 
         if (!mounted) {
@@ -588,7 +588,7 @@ export default function CustomerPage() {
         }, {
           pageSize: FACT_PAGE_SIZE,
           maxPages: 200,
-          useCache: false
+          useCache: true
         });
 
         if (!mounted) {

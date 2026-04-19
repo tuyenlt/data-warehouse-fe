@@ -372,7 +372,7 @@ export default function Dashboard() {
           filters: timeFilters,
           page: 1,
           pageSize: 500
-        }, { pageSize: 500, maxPages: 200, useCache: false });
+        }, { pageSize: 500, maxPages: 200, useCache: true });
 
         if (!mounted) return;
 
@@ -409,7 +409,7 @@ export default function Dashboard() {
             filters: salesFilters,
             page: 1,
             pageSize: 500
-          }, { pageSize: 500, maxPages: 200, useCache: false }),
+          }, { pageSize: 500, maxPages: 200, useCache: true }),
           queryOlapAllPages({
             factGroup: "TonKho",
             cube: "TonKho",
@@ -419,7 +419,7 @@ export default function Dashboard() {
             filters: inventoryFilters,
             page: 1,
             pageSize: 500
-          }, { pageSize: 500, maxPages: 200, useCache: false }),
+          }, { pageSize: 500, maxPages: 200, useCache: true }),
           queryOlapAllPages({
             factGroup: "HanhVi",
             cube: "HanhVi_KH",
@@ -429,7 +429,7 @@ export default function Dashboard() {
             filters: behaviorFilters,
             page: 1,
             pageSize: 500
-          }, { pageSize: 500, maxPages: 200, useCache: false })
+          }, { pageSize: 500, maxPages: 200, useCache: true })
         ]);
 
         if (!mounted) return;
