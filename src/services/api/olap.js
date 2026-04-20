@@ -232,7 +232,7 @@ export async function queryOlapAllPages(
     pageSize = 1000,
     maxPages = 200,
     useCache = true,
-    cacheTtlMs = 300_000
+    cacheTtlMs = 3_600_000 // 1 hour
   } = {}
 ) {
   const effectiveRequestedPageSize = Math.max(Number(pageSize) || 0, MIN_ALL_PAGES_SIZE);
@@ -412,7 +412,7 @@ export async function getDimensionMembers({
     pageSize,
     maxPages,
     useCache,
-    cacheTtlMs: 45_000
+    cacheTtlMs: 3_600_000 // 1 hour
   });
 
   const uniqueValues = new Set();

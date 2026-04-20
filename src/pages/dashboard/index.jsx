@@ -104,6 +104,11 @@ export default function Dashboard() {
       return "";
     }
 
+    // Prioritize 2018 as default if available, otherwise pick the latest year.
+    if (overlap.includes("2018")) {
+      return "2018";
+    }
+
     return getLatestMember(overlap.map((value) => ({ value, label: value })));
   }, [inventoryYearValues, salesYearValues]);
 
@@ -293,7 +298,13 @@ export default function Dashboard() {
   useEffect(() => {
     if (!defaultYear) return;
     setSelectedYears((prev) => (prev.length > 0 ? prev : [defaultYear]));
-    setAppliedFilters((prev) => (prev.years.length > 0 ? prev : { ...prev, years: [defaultYear] }));
+    setAppliedFilters((prev) => {
+      if (prev.years.length > 0) return prev;
+      return {
+        ...prev,
+        years: [defaultYear]
+      };
+    });
   }, [defaultYear]);
 
   // Prune cities when state options change
@@ -397,6 +408,10 @@ export default function Dashboard() {
     let mounted = true;
 
     async function loadData() {
+      if (yearOptions.length > 0 && appliedFilters.years.length === 0 && defaultYear) {
+        return;
+      }
+
       setLoading(true);
       setError("");
 
@@ -440,12 +455,10 @@ export default function Dashboard() {
 
         if (salesResult.status === "fulfilled") {
           const normalizedSalesRows = (salesResult.value.data || []).map((row) => {
-            const captions = extractDimensionCaptions(row).map((entry) => String(entry.value || "").trim());
-
-            const productKeyRaw = captions[0] || extractDimensionValue(row, ["productkey", "mat hang"]);
-            const yearRaw = captions[4] || extractDimensionValue(row, ["year", "nam"]);
-            const quarterRaw = captions[5] || extractDimensionValue(row, ["quarter", "quy"]);
-            const monthRaw = captions[6] || extractDimensionValue(row, ["month", "thang"]);
+            const productKeyRaw = extractDimensionValue(row, ["productkey", "mat hang"]);
+            const yearRaw = extractDimensionValue(row, ["year", "nam"]);
+            const quarterRaw = extractDimensionValue(row, ["quarter", "quy"]);
+            const monthRaw = extractDimensionValue(row, ["month", "thang"]);
 
             return {
               productKey: productKeyRaw || "Unknown",
@@ -455,7 +468,13 @@ export default function Dashboard() {
               revenue: extractMeasureByName(row, "Sales.Amount"),
               quantity: extractMeasureByName(row, "Sales.Quantity")
             };
-          }).filter((row) => isValidTimeParts(row.year, row.quarter, row.month));
+          }).filter((row) => {
+            if (!isValidTimeParts(row.year, row.quarter, row.month)) return false;
+            const matchYear = appliedFilters.years.length === 0 || appliedFilters.years.includes(String(row.year));
+            const matchQuarter = appliedFilters.quarters.length === 0 || appliedFilters.quarters.includes(String(row.quarter));
+            const matchMonth = appliedFilters.months.length === 0 || appliedFilters.months.includes(String(row.month));
+            return matchYear && matchQuarter && matchMonth;
+          });
 
           setSalesRows(normalizedSalesRows);
         } else {
@@ -465,13 +484,11 @@ export default function Dashboard() {
 
         if (inventoryResult.status === "fulfilled") {
           const normalizedInventoryRows = (inventoryResult.value.data || []).map((row) => {
-            const captions = extractDimensionCaptions(row).map((entry) => String(entry.value || "").trim());
-
-            const stateRaw = captions[0] || extractDimensionValue(row, ["state", "bang"]);
-            const cityRaw = captions[1] || extractDimensionValue(row, ["city", "thanh pho"]);
-            const yearRaw = captions[2] || extractDimensionValue(row, ["year", "nam"]);
-            const quarterRaw = captions[3] || extractDimensionValue(row, ["quarter", "quy"]);
-            const monthRaw = captions[4] || extractDimensionValue(row, ["month", "thang"]);
+            const stateRaw = extractDimensionValue(row, ["state", "bang"]);
+            const cityRaw = extractDimensionValue(row, ["city", "thanh pho"]);
+            const yearRaw = extractDimensionValue(row, ["year", "nam"]);
+            const quarterRaw = extractDimensionValue(row, ["quarter", "quy"]);
+            const monthRaw = extractDimensionValue(row, ["month", "thang"]);
 
             return {
               state: stateRaw || "Unknown",
@@ -481,7 +498,15 @@ export default function Dashboard() {
               month: parseMonthMember(monthRaw),
               quantity: extractMeasureByName(row, "Inventory.Quantity")
             };
-          }).filter((row) => isValidTimeParts(row.year, row.quarter, row.month));
+          }).filter((row) => {
+            if (!isValidTimeParts(row.year, row.quarter, row.month)) return false;
+            const matchYear = appliedFilters.years.length === 0 || appliedFilters.years.includes(String(row.year));
+            const matchQuarter = appliedFilters.quarters.length === 0 || appliedFilters.quarters.includes(String(row.quarter));
+            const matchMonth = appliedFilters.months.length === 0 || appliedFilters.months.includes(String(row.month));
+            const matchState = appliedFilters.states.length === 0 || appliedFilters.states.includes(String(row.state));
+            const matchCity = appliedFilters.cities.length === 0 || appliedFilters.cities.includes(String(row.city));
+            return matchYear && matchQuarter && matchMonth && matchState && matchCity;
+          });
 
           setInventoryRows(normalizedInventoryRows);
         } else {
@@ -516,7 +541,7 @@ export default function Dashboard() {
 
     loadData();
     return () => { mounted = false; };
-  }, [behaviorFilters, inventoryFilters, salesFilters]);
+  }, [behaviorFilters, inventoryFilters, salesFilters, appliedFilters, defaultYear, yearOptions.length]);
 
   function applyFilters() {
     setAppliedFilters({
@@ -693,28 +718,36 @@ export default function Dashboard() {
       </section>
 
       <section className="olap-charts">
-        <article className="mini-chart-card" onClick={() => navigate("/sale")}>
-          <div className="olap-chart-card__head">
-            <h4>Revenue Over Time</h4>
-            <button type="button" className="pivot-btn" onClick={(event) => { event.stopPropagation(); setIsPivotRevenueTime((prev) => !prev); }}>Pivot</button>
-          </div>
-          <ReactECharts notMerge={true} option={revenueTrendOption} style={{ height: "300px" }} />
-        </article>
+        {revenueTrendRows.length > 0 && (
+          <article className="mini-chart-card" onClick={() => navigate("/sale")}>
+            <div className="olap-chart-card__head">
+              <h4>Revenue Over Time</h4>
+              <button type="button" className="pivot-btn" onClick={(event) => { event.stopPropagation(); setIsPivotRevenueTime((prev) => !prev); }}>Pivot</button>
+            </div>
+            <ReactECharts notMerge={true} option={revenueTrendOption} style={{ height: "300px" }} />
+          </article>
+        )}
 
-        <article className="mini-chart-card" onClick={() => navigate("/sale")}>
-          <h4>Top Products by Revenue</h4>
-          <ReactECharts notMerge={true} option={topRevenueProductOption} style={{ height: "300px" }} />
-        </article>
+        {topRevenueProductRows.length > 0 && (
+          <article className="mini-chart-card" onClick={() => navigate("/sale")}>
+            <h4>Top Products by Revenue</h4>
+            <ReactECharts notMerge={true} option={topRevenueProductOption} style={{ height: "300px" }} />
+          </article>
+        )}
 
-        {/* <article className="mini-chart-card" onClick={() => navigate("/customer")}>
-          <h4>Customers by State</h4>
-          <ReactECharts notMerge={true} option={customerCountByStateOption} style={{ height: "300px" }} />
-        </article>
+        {/* {customerCountByStateRows.length > 0 && (
+          <article className="mini-chart-card" onClick={() => navigate("/customer")}>
+            <h4>Customers by State</h4>
+            <ReactECharts notMerge={true} option={customerCountByStateOption} style={{ height: "300px" }} />
+          </article>
+        )}
 
-        <article className="mini-chart-card" onClick={() => navigate("/inventory")}>
-          <h4>Inventory Over Time</h4>
-          <ReactECharts notMerge={true} option={inventoryTrendOption} style={{ height: "300px" }} />
-        </article> */}
+        {inventoryTrendRows.length > 0 && (
+          <article className="mini-chart-card" onClick={() => navigate("/inventory")}>
+            <h4>Inventory Over Time</h4>
+            <ReactECharts notMerge={true} option={inventoryTrendOption} style={{ height: "300px" }} />
+          </article>
+        )} */}
       </section>
     </section>
   );

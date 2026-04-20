@@ -151,9 +151,9 @@ export default function InventoryPage() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   const DIMENSION_OPTIONS = [
-    { value: "MH", label: "Mặt Hàng (Product)" },
-    { value: "CH", label: "Cửa Hàng & Địa Điểm (Store & Location)" },
-    { value: "TG", label: "Thời Gian (Time)" }
+    { value: "MH", label: "Product" },
+    { value: "CH", label: "Store & Location" },
+    { value: "TG", label: "Time" }
   ];
 
   const [selectedDimensions, setSelectedDimensions] = useState(["MH", "CH", "TG"]);
@@ -565,7 +565,7 @@ export default function InventoryPage() {
         }
         if (appliedFilters.dimensions.includes("CH")) {
           rowsToFetch.push("CH.StoreKey", "CH.LocationKey", "CH.Phone");
-          // Địa điểm đi kèm luôn với Cửa Hàng
+          // Location always accompanies Store
           rowsToFetch.push("DD.State", "DD.City");
         }
         const supportsTime = resolvedCube.includes("_TG") || resolvedCube === "TonKho" || resolvedCube === "BanHang" || resolvedCube === "HanhVi_KH_TG";
@@ -630,7 +630,19 @@ export default function InventoryPage() {
             value: extractMeasureByName(row, "Inventory.Value"),
             weight: extractMeasureByName(row, "Inventory.Weight")
           };
-        }).filter((row) => !appliedFilters.dimensions.includes("TG") || isValidTimeParts(row.year, row.quarter, row.month));
+        }).filter((row) => {
+          if (appliedFilters.dimensions.includes("TG") && !isValidTimeParts(row.year, row.quarter, row.month)) return false;
+
+          const matchYear = appliedFilters.years.length === 0 || appliedFilters.years.includes(String(row.year));
+          const matchQuarter = appliedFilters.quarters.length === 0 || appliedFilters.quarters.includes(String(row.quarter));
+          const matchMonth = appliedFilters.months.length === 0 || appliedFilters.months.includes(String(row.month));
+          const matchState = appliedFilters.states.length === 0 || appliedFilters.states.includes(String(row.state));
+          const matchCity = appliedFilters.cities.length === 0 || appliedFilters.cities.includes(String(row.city));
+          const matchProduct = appliedFilters.products.length === 0 || appliedFilters.products.includes(String(row.productKey));
+          const matchStore = appliedFilters.stores.length === 0 || appliedFilters.stores.includes(String(row.storeKey));
+
+          return matchYear && matchQuarter && matchMonth && matchState && matchCity && matchProduct && matchStore;
+        });
 
         setAllFactRows(normalizedRows);
       } catch (err) {
@@ -1012,46 +1024,54 @@ export default function InventoryPage() {
           {error ? <p className="empty-message">{error}</p> : null}
 
           <section className="olap-charts">
-            <article className="olap-chart-card">
-              <div className="olap-chart-card__head">
-                <h4>Product Mix by Store</h4>
-                <button type="button" className="pivot-btn" onClick={() => setIsPivotProductDist((previous) => !previous)}>Pivot</button>
-              </div>
-              <ReactECharts notMerge={true} option={productDistByStoreOption} style={{ height: "300px" }} />
-              <MatrixTable matrix={productDistMatrix} />
-            </article>
+            {productDistMatrix?.rows?.length > 0 && (
+              <article className="olap-chart-card">
+                <div className="olap-chart-card__head">
+                  <h4>Product Mix by Store</h4>
+                  <button type="button" className="pivot-btn" onClick={() => setIsPivotProductDist((previous) => !previous)}>Pivot</button>
+                </div>
+                <ReactECharts notMerge={true} option={productDistByStoreOption} style={{ height: "300px" }} />
+                <MatrixTable matrix={productDistMatrix} />
+              </article>
+            )}
 
-            <article className="olap-chart-card">
-              <div className="olap-chart-card__head">
-                <h4>Inventory Quantity Over Time</h4>
-                <button type="button" className="pivot-btn" onClick={() => setIsPivotQtyTime((previous) => !previous)}>Pivot</button>
-              </div>
-              <ReactECharts
-                notMerge={true}
-                key={`inventory-quantity-time-${timeLevel.key}-${isPivotQtyTime ? "pivot" : "base"}`}
-                option={quantityByTimeOption}
-                style={{ height: "300px" }}
-              />
-              <MatrixTable matrix={quantityTimeMatrix} />
-            </article>
+            {quantityTimeMatrix?.rows?.length > 0 && (
+              <article className="olap-chart-card">
+                <div className="olap-chart-card__head">
+                  <h4>Inventory Quantity Over Time</h4>
+                  <button type="button" className="pivot-btn" onClick={() => setIsPivotQtyTime((previous) => !previous)}>Pivot</button>
+                </div>
+                <ReactECharts
+                  notMerge={true}
+                  key={`inventory-quantity-time-${timeLevel.key}-${isPivotQtyTime ? "pivot" : "base"}`}
+                  option={quantityByTimeOption}
+                  style={{ height: "300px" }}
+                />
+                <MatrixTable matrix={quantityTimeMatrix} />
+              </article>
+            )}
 
-            <article className="olap-chart-card">
-              <div className="olap-chart-card__head">
-                <h4>Inventory Value by Store</h4>
-                <button type="button" className="pivot-btn" onClick={() => setIsPivotValueStore((previous) => !previous)}>Pivot</button>
-              </div>
-              <ReactECharts notMerge={true} option={valueByStoreOption} style={{ height: "300px" }} />
-              <MatrixTable matrix={valueByStoreMatrix} />
-            </article>
+            {valueByStoreMatrix?.rows?.length > 0 && (
+              <article className="olap-chart-card">
+                <div className="olap-chart-card__head">
+                  <h4>Inventory Value by Store</h4>
+                  <button type="button" className="pivot-btn" onClick={() => setIsPivotValueStore((previous) => !previous)}>Pivot</button>
+                </div>
+                <ReactECharts notMerge={true} option={valueByStoreOption} style={{ height: "300px" }} />
+                <MatrixTable matrix={valueByStoreMatrix} />
+              </article>
+            )}
 
-            <article className="olap-chart-card">
-              <div className="olap-chart-card__head">
-                <h4>Store Count by {locationLevel.label}</h4>
-                <button type="button" className="pivot-btn" onClick={() => setIsPivotStoreCountByLocation((previous) => !previous)}>Pivot</button>
-              </div>
-              <ReactECharts notMerge={true} option={storeCountByLocationOption} style={{ height: "300px" }} />
-              <MatrixTable matrix={storeCountByLocationMatrix} />
-            </article>
+            {storeCountByLocationMatrix?.rows?.length > 0 && (
+              <article className="olap-chart-card">
+                <div className="olap-chart-card__head">
+                  <h4>Store Count by {locationLevel.label}</h4>
+                  <button type="button" className="pivot-btn" onClick={() => setIsPivotStoreCountByLocation((previous) => !previous)}>Pivot</button>
+                </div>
+                <ReactECharts notMerge={true} option={storeCountByLocationOption} style={{ height: "300px" }} />
+                <MatrixTable matrix={storeCountByLocationMatrix} />
+              </article>
+            )}
           </section>
 
           <section className="olap-card">

@@ -109,8 +109,8 @@ export default function CustomerPage() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   const DIMENSION_OPTIONS = [
-    { value: "KH", label: "Khách Hàng (Customer & Location)" },
-    { value: "TG", label: "Thời Gian (Time)" }
+    { value: "KH", label: "Customer & Location" },
+    { value: "TG", label: "Time" }
   ];
 
   const [selectedDimensions, setSelectedDimensions] = useState(["KH", "TG"]);
@@ -667,6 +667,17 @@ export default function CustomerPage() {
             totalRevenue: extractMeasureByName(row, "Behavior.TotalRevenue"),
             avgOrderValue: extractMeasureByName(row, "Behavior.AvgOrderValue")
           };
+        }).filter((row) => {
+          // Note: In Customer page, time filtering is usually on First Order Date
+          const matchYear = appliedFilters.years.length === 0 || appliedFilters.years.includes(String(row.firstOrderYear));
+          const matchQuarter = appliedFilters.quarters.length === 0 || appliedFilters.quarters.includes(String(row.firstOrderQuarter));
+          const matchMonth = appliedFilters.months.length === 0 || appliedFilters.months.includes(String(row.firstOrderMonth));
+          const matchState = appliedFilters.states.length === 0 || appliedFilters.states.includes(String(row.state));
+          const matchCity = appliedFilters.cities.length === 0 || appliedFilters.cities.includes(String(row.city));
+          const matchType = appliedFilters.types.length === 0 || appliedFilters.types.includes(String(row.customerType));
+          const matchKey = appliedFilters.customerKeys.length === 0 || appliedFilters.customerKeys.includes(String(row.customerKey));
+
+          return matchYear && matchQuarter && matchMonth && matchState && matchCity && matchType && matchKey;
         });
 
         setAllFactRows(normalizedFactRows);
@@ -1055,50 +1066,58 @@ export default function CustomerPage() {
           {error ? <p className="empty-message">{error}</p> : null}
 
           <section className="olap-charts">
-            <article className="olap-chart-card">
-              <div className="olap-chart-card__head">
-                <h4>Top Customers by Revenue</h4>
-              </div>
-              <ReactECharts notMerge={true} option={topUsersByRevenueOption} style={{ height: "300px" }} />
-              <ChartDataTable
-                headers={["Customer Key", "Revenue"]}
-                rows={topUsersByRevenueRows.map((item) => [item.label, formatCurrencyUSD(item.value)])}
-              />
-            </article>
+            {topUsersByRevenueRows.length > 0 && (
+              <article className="olap-chart-card">
+                <div className="olap-chart-card__head">
+                  <h4>Top Customers by Revenue</h4>
+                </div>
+                <ReactECharts notMerge={true} option={topUsersByRevenueOption} style={{ height: "300px" }} />
+                <ChartDataTable
+                  headers={["Customer Key", "Revenue"]}
+                  rows={topUsersByRevenueRows.map((item) => [item.label, formatCurrencyUSD(item.value)])}
+                />
+              </article>
+            )}
 
-            <article className="olap-chart-card">
-              <div className="olap-chart-card__head">
-                <h4>Purchases by Location</h4>
-              </div>
-              <ReactECharts notMerge={true} option={purchasesByRegionTypeOption} style={{ height: "300px" }} />
-              <ChartDataTable
-                headers={[locationLevel.label, "Tourist", "Postal"]}
-                rows={purchasesByRegionTypeRows.map((item) => [item.label, formatNumber(item.tourist), formatNumber(item.postal)])}
-              />
-            </article>
+            {purchasesByRegionTypeRows.length > 0 && (
+              <article className="olap-chart-card">
+                <div className="olap-chart-card__head">
+                  <h4>Purchases by Location</h4>
+                </div>
+                <ReactECharts notMerge={true} option={purchasesByRegionTypeOption} style={{ height: "300px" }} />
+                <ChartDataTable
+                  headers={[locationLevel.label, "Tourist", "Postal"]}
+                  rows={purchasesByRegionTypeRows.map((item) => [item.label, formatNumber(item.tourist), formatNumber(item.postal)])}
+                />
+              </article>
+            )}
 
-            <article className="olap-chart-card">
-              <div className="olap-chart-card__head">
-                <h4>Customer Type Mix</h4>
-              </div>
-              <ReactECharts notMerge={true} option={customerTypeDistributionOption} style={{ height: "300px" }} />
-              <ChartDataTable
-                headers={["Customer Type", "Customers"]}
-                rows={customerTypeDistributionRows.map((item) => [item.label, formatNumber(item.value)])}
-              />
-            </article>
+            {customerTypeDistributionRows.length > 0 && (
+              <article className="olap-chart-card">
+                <div className="olap-chart-card__head">
+                  <h4>Customer Type Mix</h4>
+                </div>
+                <ReactECharts notMerge={true} option={customerTypeDistributionOption} style={{ height: "300px" }} />
+                <ChartDataTable
+                  headers={["Customer Type", "Customers"]}
+                  rows={customerTypeDistributionRows.map((item) => [item.label, formatNumber(item.value)])}
+                />
+              </article>
+            )}
 
-            <article className="olap-chart-card">
-              <div className="olap-chart-card__head">
-                <h4>Customer Activity Over Time</h4>
-                <button type="button" className="pivot-btn" onClick={() => setIsPivotUsersBuyTime((previous) => !previous)}>Pivot</button>
-              </div>
-              <ReactECharts notMerge={true} option={usersBuyOverTimeOption} style={{ height: "300px" }} />
-              <ChartDataTable
-                headers={timeTableData.headers}
-                rows={timeTableData.rows}
-              />
-            </article>
+            {timeSeriesData.years.length > 0 && (
+              <article className="olap-chart-card">
+                <div className="olap-chart-card__head">
+                  <h4>Customer Activity Over Time</h4>
+                  <button type="button" className="pivot-btn" onClick={() => setIsPivotUsersBuyTime((previous) => !previous)}>Pivot</button>
+                </div>
+                <ReactECharts notMerge={true} option={usersBuyOverTimeOption} style={{ height: "300px" }} />
+                <ChartDataTable
+                  headers={timeTableData.headers}
+                  rows={timeTableData.rows}
+                />
+              </article>
+            )}
           </section>
 
           <section className="olap-card">

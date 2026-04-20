@@ -198,8 +198,8 @@ export default function SalePage() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   const DIMENSION_OPTIONS = [
-    { value: "MH", label: "Mặt Hàng (Product)" },
-    { value: "TG", label: "Thời Gian (Time)" }
+    { value: "MH", label: "Product" },
+    { value: "TG", label: "Time" }
   ];
 
   const [selectedDimensions, setSelectedDimensions] = useState(["MH", "TG"]);
@@ -361,9 +361,9 @@ export default function SalePage() {
     }
   }, [timeLevelIndex]);
 
-  const resolvedCube = useMemo(() => 
+  const resolvedCube = useMemo(() =>
     resolveCubeName("Fact_BanHang", appliedFilters.dimensions, appliedFilters),
-  [appliedFilters]);
+    [appliedFilters]);
 
   const filters = useMemo(() => {
     const next = [];
@@ -471,7 +471,16 @@ export default function SalePage() {
             profit: extractMeasureByName(row, "Sales.Profit"),
             avgProfit: extractMeasureByName(row, "Sales.AvgProfit")
           };
-        }).filter((row) => !appliedFilters.dimensions.includes("TG") || isValidTimeParts(row.year, row.quarter, row.month));
+        }).filter((row) => {
+          if (appliedFilters.dimensions.includes("TG") && !isValidTimeParts(row.year, row.quarter, row.month)) return false;
+
+          const matchYear = appliedFilters.years.length === 0 || appliedFilters.years.includes(String(row.year));
+          const matchQuarter = appliedFilters.quarters.length === 0 || appliedFilters.quarters.includes(String(row.quarter));
+          const matchMonth = appliedFilters.months.length === 0 || appliedFilters.months.includes(String(row.month));
+          const matchProduct = appliedFilters.products.length === 0 || appliedFilters.products.includes(String(row.productKey));
+
+          return matchYear && matchQuarter && matchMonth && matchProduct;
+        });
 
         setAllFactRows(normalizedRows);
       } catch (err) {
@@ -833,61 +842,69 @@ export default function SalePage() {
           {error ? <p className="empty-message">{error}</p> : null}
 
           <section className="olap-charts">
-            <article className="olap-chart-card">
-              <div className="olap-chart-card__head">
-                <h4>Revenue Over Time</h4>
-                <button type="button" className="pivot-btn" onClick={() => setIsPivotRevenueByTime((previous) => !previous)}>Pivot</button>
-              </div>
-              <ReactECharts
-                notMerge={true}
-                key={`sale-revenue-time-${timeLevel.key}-${isPivotRevenueByTime ? "pivot" : "base"}`}
-                option={revenueByTimeOption}
-                style={{ height: "320px" }}
-              />
-              <TimeMatrix data={revenueTimeData} pivot={isPivotRevenueByTime} valueFormatter={formatCurrencyUSD} />
-            </article>
+            {revenueTimeData.years.length > 0 && (
+              <article className="olap-chart-card">
+                <div className="olap-chart-card__head">
+                  <h4>Revenue Over Time</h4>
+                  <button type="button" className="pivot-btn" onClick={() => setIsPivotRevenueByTime((previous) => !previous)}>Pivot</button>
+                </div>
+                <ReactECharts
+                  notMerge={true}
+                  key={`sale-revenue-time-${timeLevel.key}-${isPivotRevenueByTime ? "pivot" : "base"}`}
+                  option={revenueByTimeOption}
+                  style={{ height: "320px" }}
+                />
+                <TimeMatrix data={revenueTimeData} pivot={isPivotRevenueByTime} valueFormatter={formatCurrencyUSD} />
+              </article>
+            )}
 
-            <article className="olap-chart-card">
-              <div className="olap-chart-card__head">
-                <h4>Quantity Over Time</h4>
-                <button type="button" className="pivot-btn" onClick={() => setIsPivotQuantityByTime((previous) => !previous)}>Pivot</button>
-              </div>
-              <ReactECharts
-                notMerge={true}
-                key={`sale-quantity-time-${timeLevel.key}-${isPivotQuantityByTime ? "pivot" : "base"}`}
-                option={quantityByTimeOption}
-                style={{ height: "320px" }}
-              />
-              <TimeMatrix data={quantityTimeData} pivot={isPivotQuantityByTime} valueFormatter={formatNumber} />
-            </article>
+            {quantityTimeData.years.length > 0 && (
+              <article className="olap-chart-card">
+                <div className="olap-chart-card__head">
+                  <h4>Quantity Over Time</h4>
+                  <button type="button" className="pivot-btn" onClick={() => setIsPivotQuantityByTime((previous) => !previous)}>Pivot</button>
+                </div>
+                <ReactECharts
+                  notMerge={true}
+                  key={`sale-quantity-time-${timeLevel.key}-${isPivotQuantityByTime ? "pivot" : "base"}`}
+                  option={quantityByTimeOption}
+                  style={{ height: "320px" }}
+                />
+                <TimeMatrix data={quantityTimeData} pivot={isPivotQuantityByTime} valueFormatter={formatNumber} />
+              </article>
+            )}
 
-            <article className="olap-chart-card">
-              <div className="olap-chart-card__head">
-                <h4>Revenue by Product</h4>
-                <button type="button" className="pivot-btn" onClick={() => setIsPivotRevenueByProduct((previous) => !previous)}>Pivot</button>
-              </div>
-              <ReactECharts notMerge={true} option={revenueByProductOption} style={{ height: "320px" }} />
-              <ProductMatrix
-                rows={productRevenueRows}
-                pivot={isPivotRevenueByProduct}
-                valueFormatter={formatCurrencyUSD}
-                valueHeader="Revenue"
-              />
-            </article>
+            {productRevenueRows.length > 0 && (
+              <article className="olap-chart-card">
+                <div className="olap-chart-card__head">
+                  <h4>Revenue by Product</h4>
+                  <button type="button" className="pivot-btn" onClick={() => setIsPivotRevenueByProduct((previous) => !previous)}>Pivot</button>
+                </div>
+                <ReactECharts notMerge={true} option={revenueByProductOption} style={{ height: "320px" }} />
+                <ProductMatrix
+                  rows={productRevenueRows}
+                  pivot={isPivotRevenueByProduct}
+                  valueFormatter={formatCurrencyUSD}
+                  valueHeader="Revenue"
+                />
+              </article>
+            )}
 
-            <article className="olap-chart-card">
-              <div className="olap-chart-card__head">
-                <h4>Avg Profit by Product</h4>
-                <button type="button" className="pivot-btn" onClick={() => setIsPivotAvgProfitByProduct((previous) => !previous)}>Pivot</button>
-              </div>
-              <ReactECharts notMerge={true} option={avgProfitByProductOption} style={{ height: "320px" }} />
-              <ProductMatrix
-                rows={productAvgProfitRows}
-                pivot={isPivotAvgProfitByProduct}
-                valueFormatter={formatCurrencyUSD}
-                valueHeader="Average Profit"
-              />
-            </article>
+            {productAvgProfitRows.length > 0 && (
+              <article className="olap-chart-card">
+                <div className="olap-chart-card__head">
+                  <h4>Avg Profit by Product</h4>
+                  <button type="button" className="pivot-btn" onClick={() => setIsPivotAvgProfitByProduct((previous) => !previous)}>Pivot</button>
+                </div>
+                <ReactECharts notMerge={true} option={avgProfitByProductOption} style={{ height: "320px" }} />
+                <ProductMatrix
+                  rows={productAvgProfitRows}
+                  pivot={isPivotAvgProfitByProduct}
+                  valueFormatter={formatCurrencyUSD}
+                  valueHeader="Average Profit"
+                />
+              </article>
+            )}
           </section>
 
           <section className="olap-card">
