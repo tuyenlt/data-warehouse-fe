@@ -14,6 +14,7 @@ import {
   formatCurrencyUSD,
   formatNumber,
   getLatestMember,
+  resolveCubeName,
   truncateMiddle
 } from "../olap-helpers";
 import "./sale.css";
@@ -196,6 +197,12 @@ export default function SalePage() {
   const [isPivotAvgProfitByProduct, setIsPivotAvgProfitByProduct] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
+  const DIMENSION_OPTIONS = [
+    { value: "MH", label: "Mặt Hàng (Product)" },
+    { value: "TG", label: "Thời Gian (Time)" }
+  ];
+
+  const [selectedDimensions, setSelectedDimensions] = useState(["MH", "TG"]);
   const [selectedYears, setSelectedYears] = useState([]);
   const [selectedQuarters, setSelectedQuarters] = useState([]);
   const [selectedMonths, setSelectedMonths] = useState([]);
@@ -220,6 +227,7 @@ export default function SalePage() {
   const [productOptions, setProductOptions] = useState([]);
 
   const [appliedFilters, setAppliedFilters] = useState({
+    dimensions: ["MH", "TG"],
     years: [],
     quarters: [],
     months: [],
@@ -353,24 +361,31 @@ export default function SalePage() {
     }
   }, [timeLevelIndex]);
 
+  const resolvedCube = useMemo(() => 
+    resolveCubeName("Fact_BanHang", appliedFilters.dimensions, appliedFilters),
+  [appliedFilters]);
+
   const filters = useMemo(() => {
     const next = [];
+    const supportsTime = resolvedCube.includes("_TG") || resolvedCube === "TonKho" || resolvedCube === "BanHang" || resolvedCube === "HanhVi_KH_TG";
 
-    if (appliedFilters.years.length > 0) {
-      next.push({ key: "TG.Year", values: appliedFilters.years });
-    }
-    if (appliedFilters.quarters.length > 0) {
-      next.push({ key: "TG.Quarter", values: appliedFilters.quarters });
-    }
-    if (appliedFilters.months.length > 0) {
-      next.push({ key: "TG.Month", values: appliedFilters.months });
+    if (supportsTime) {
+      if (appliedFilters.years.length > 0) {
+        next.push({ key: "TG.Year", values: appliedFilters.years });
+      }
+      if (appliedFilters.quarters.length > 0) {
+        next.push({ key: "TG.Quarter", values: appliedFilters.quarters });
+      }
+      if (appliedFilters.months.length > 0) {
+        next.push({ key: "TG.Month", values: appliedFilters.months });
+      }
     }
     if (appliedFilters.products.length > 0) {
       next.push({ key: "MH.ProductKey", values: appliedFilters.products });
     }
 
     return next;
-  }, [appliedFilters]);
+  }, [appliedFilters, resolvedCube]);
 
   const measureRanges = useMemo(() => {
     const ranges = {};
@@ -414,11 +429,19 @@ export default function SalePage() {
       setError("");
 
       try {
+        const rowsToFetch = [];
+        if (appliedFilters.dimensions.includes("MH")) {
+          rowsToFetch.push("MH.ProductKey", "MH.Description", "MH.Size", "MH.Weight");
+        }
+        if (appliedFilters.dimensions.includes("TG")) {
+          rowsToFetch.push("TG.Year", "TG.Quarter", "TG.Month");
+        }
+
         const response = await queryOlapAllPages({
-          factGroup: "BanHang",
-          cube: "BanHang_MH_TG",
+          factGroup: "Fact_BanHang",
+          cube: resolvedCube,
           measures: ["Sales.Amount", "Sales.Quantity", "Sales.Profit", "Sales.AvgProfit"],
-          rows: ["MH.ProductKey", "MH.Description", "MH.Size", "MH.Weight", "TG.Year", "TG.Quarter", "TG.Month"],
+          rows: rowsToFetch,
           columns: [],
           filters,
           measureRanges,
@@ -435,30 +458,20 @@ export default function SalePage() {
         }
 
         const normalizedRows = (response.data || []).map((row) => {
-          const captions = extractDimensionCaptions(row).map((entry) => String(entry.value || "").trim());
-
-          const productKeyRaw = captions[0] || extractDimensionValue(row, ["productkey", "mat hang"]);
-          const descriptionRaw = captions[1] || extractDimensionValue(row, ["description", "mo ta"]);
-          const sizeRaw = captions[2] || extractDimensionValue(row, ["size", "kich thuoc"]);
-          const productWeightRaw = captions[3] || extractDimensionValue(row, ["weight", "trong luong"]);
-          const yearRaw = captions[4] || extractDimensionValue(row, ["year", "nam"]);
-          const quarterRaw = captions[5] || extractDimensionValue(row, ["quarter", "quy"]);
-          const monthRaw = captions[6] || extractDimensionValue(row, ["month", "thang"]);
-
           return {
-            productKey: productKeyRaw || "Unknown",
-            description: descriptionRaw || "N/A",
-            size: sizeRaw || "N/A",
-            productWeight: productWeightRaw || "N/A",
-            year: parseYearMember(yearRaw),
-            quarter: parseQuarterMember(quarterRaw),
-            month: parseMonthMember(monthRaw),
+            productKey: extractDimensionValue(row, ["productkey", "mat hang"]) || "Unknown",
+            description: extractDimensionValue(row, ["description", "mo ta"]) || "N/A",
+            size: extractDimensionValue(row, ["size", "kich thuoc"]) || "N/A",
+            productWeight: extractDimensionValue(row, ["weight", "trong luong"]) || "N/A",
+            year: parseYearMember(extractDimensionValue(row, ["year", "nam"])),
+            quarter: parseQuarterMember(extractDimensionValue(row, ["quarter", "quy"])),
+            month: parseMonthMember(extractDimensionValue(row, ["month", "thang"])),
             revenue: extractMeasureByName(row, "Sales.Amount"),
             quantity: extractMeasureByName(row, "Sales.Quantity"),
             profit: extractMeasureByName(row, "Sales.Profit"),
             avgProfit: extractMeasureByName(row, "Sales.AvgProfit")
           };
-        }).filter((row) => isValidTimeParts(row.year, row.quarter, row.month));
+        }).filter((row) => !appliedFilters.dimensions.includes("TG") || isValidTimeParts(row.year, row.quarter, row.month));
 
         setAllFactRows(normalizedRows);
       } catch (err) {
@@ -522,6 +535,7 @@ export default function SalePage() {
 
   function applyFilters() {
     setAppliedFilters({
+      dimensions: selectedDimensions.length > 0 ? [...selectedDimensions] : ["MH", "TG"],
       years: [...selectedYears],
       quarters: [...selectedQuarters],
       months: [...selectedMonths],
@@ -538,6 +552,7 @@ export default function SalePage() {
   function resetFilters() {
     const defaultYears = latestYear ? [latestYear] : [];
 
+    setSelectedDimensions(["MH", "TG"]);
     setSelectedYears(defaultYears);
     setSelectedQuarters([]);
     setSelectedMonths([]);
@@ -546,6 +561,7 @@ export default function SalePage() {
     setQuantityRange({ min: "", max: "" });
     setProfitRange({ min: "", max: "" });
     setAppliedFilters({
+      dimensions: ["MH", "TG"],
       years: [...defaultYears],
       quarters: [],
       months: [],
@@ -822,10 +838,10 @@ export default function SalePage() {
                 <h4>Revenue Over Time</h4>
                 <button type="button" className="pivot-btn" onClick={() => setIsPivotRevenueByTime((previous) => !previous)}>Pivot</button>
               </div>
-              <ReactECharts notMerge={true}
+              <ReactECharts
+                notMerge={true}
                 key={`sale-revenue-time-${timeLevel.key}-${isPivotRevenueByTime ? "pivot" : "base"}`}
                 option={revenueByTimeOption}
-                notMerge
                 style={{ height: "320px" }}
               />
               <TimeMatrix data={revenueTimeData} pivot={isPivotRevenueByTime} valueFormatter={formatCurrencyUSD} />
@@ -836,10 +852,10 @@ export default function SalePage() {
                 <h4>Quantity Over Time</h4>
                 <button type="button" className="pivot-btn" onClick={() => setIsPivotQuantityByTime((previous) => !previous)}>Pivot</button>
               </div>
-              <ReactECharts notMerge={true}
+              <ReactECharts
+                notMerge={true}
                 key={`sale-quantity-time-${timeLevel.key}-${isPivotQuantityByTime ? "pivot" : "base"}`}
                 option={quantityByTimeOption}
-                notMerge
                 style={{ height: "320px" }}
               />
               <TimeMatrix data={quantityTimeData} pivot={isPivotQuantityByTime} valueFormatter={formatNumber} />
@@ -880,10 +896,14 @@ export default function SalePage() {
               <table className="fact-table">
                 <thead>
                   <tr>
-                    <th>Product Key</th>
-                    <th>Year</th>
-                    <th>Quarter</th>
-                    <th>Month</th>
+                    {appliedFilters.dimensions.includes("MH") ? <th>Product Key</th> : null}
+                    {appliedFilters.dimensions.includes("TG") ? (
+                      <>
+                        <th>Year</th>
+                        {timeLevelIndex >= 1 && <th>Quarter</th>}
+                        {timeLevelIndex >= 2 && <th>Month</th>}
+                      </>
+                    ) : null}
                     {visibleMeasureSet.has("quantity") ? <th className="num">Quantity</th> : null}
                     {visibleMeasureSet.has("revenue") ? <th className="num">Revenue ($)</th> : null}
                     {visibleMeasureSet.has("profit") ? <th className="num">Profit ($)</th> : null}
@@ -898,22 +918,28 @@ export default function SalePage() {
                     return (
                       <Fragment key={rowKey}>
                         <tr>
-                          <td title={row.productKey}>
-                            <div className="fact-key-inline">
-                              <span className="fact-key-text">{row.productKey}</span>
-                              <button
-                                type="button"
-                                className="expand-btn fact-key-plus"
-                                onClick={() => toggleExpandedRow(rowKey)}
-                                aria-label={isExpanded ? "Collapse details" : "Expand details"}
-                              >
-                                {isExpanded ? "-" : "+"}
-                              </button>
-                            </div>
-                          </td>
-                          <td>{row.year}</td>
-                          <td>{`Q${row.quarter}`}</td>
-                          <td>{`M${row.month}`}</td>
+                          {appliedFilters.dimensions.includes("MH") ? (
+                            <td title={row.productKey}>
+                              <div className="fact-key-inline">
+                                <span className="fact-key-text">{row.productKey}</span>
+                                <button
+                                  type="button"
+                                  className="expand-btn fact-key-plus"
+                                  onClick={() => toggleExpandedRow(rowKey)}
+                                  aria-label={isExpanded ? "Collapse details" : "Expand details"}
+                                >
+                                  {isExpanded ? "-" : "+"}
+                                </button>
+                              </div>
+                            </td>
+                          ) : null}
+                          {appliedFilters.dimensions.includes("TG") ? (
+                            <>
+                              <td>{row.year}</td>
+                              {timeLevelIndex >= 1 && <td>{`Q${row.quarter}`}</td>}
+                              {timeLevelIndex >= 2 && <td>{`M${row.month}`}</td>}
+                            </>
+                          ) : null}
                           {visibleMeasureSet.has("quantity") ? <td className="num">{formatNumber(row.quantity)}</td> : null}
                           {visibleMeasureSet.has("revenue") ? <td className="num">{formatCurrencyUSD(row.revenue)}</td> : null}
                           {visibleMeasureSet.has("profit") ? <td className="num">{formatCurrencyUSD(row.profit)}</td> : null}
@@ -982,6 +1008,12 @@ export default function SalePage() {
 
           <div className="olap-panel-group">
             <p className="olap-panel-group__title">Hierarchy Members</p>
+            <MultiSelect
+              label="Dimensions"
+              values={selectedDimensions}
+              options={DIMENSION_OPTIONS}
+              onChange={setSelectedDimensions}
+            />
             <MultiSelect label="Year" values={selectedYears} options={yearOptions} onChange={setSelectedYears} />
             {timeLevelIndex >= 1 ? (
               <MultiSelect label="Quarter" values={selectedQuarters} options={quarterOptions} onChange={setSelectedQuarters} />

@@ -337,8 +337,10 @@ export default function Dashboard() {
   const salesFilters = useMemo(() => [...timeFilters], [timeFilters]);
   const inventoryFilters = useMemo(() => ([...timeFilters, ...locationFilters]), [locationFilters, timeFilters]);
   const behaviorFilters = useMemo(() => {
+    // Chỉ lấy bộ lọc địa điểm (State, City)
     const filters = [...locationFilters];
 
+    // Nếu không chọn thời gian, trả về luôn bộ lọc địa điểm
     if (!hasTimeFilterSelection) {
       return filters;
     }
@@ -421,7 +423,7 @@ export default function Dashboard() {
             pageSize: 500
           }, { pageSize: 500, maxPages: 200, useCache: true }),
           queryOlapAllPages({
-            factGroup: "HanhVi",
+            factGroup: "Fact_HanhVi",
             cube: "HanhVi_KH",
             measures: ["Behavior.TotalItems"],
             rows: ["DD.State", "DD.City", "KH.CustomerKey"],

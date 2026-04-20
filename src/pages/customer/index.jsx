@@ -14,6 +14,7 @@ import {
   formatCurrencyUSD,
   formatNumber,
   getLatestMember,
+  resolveCubeName,
   truncateMiddle
 } from "../olap-helpers";
 import "./customer.css";
@@ -107,6 +108,12 @@ export default function CustomerPage() {
   const [isPivotUsersBuyTime, setIsPivotUsersBuyTime] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
+  const DIMENSION_OPTIONS = [
+    { value: "KH", label: "Khách Hàng (Customer & Location)" },
+    { value: "TG", label: "Thời Gian (Time)" }
+  ];
+
+  const [selectedDimensions, setSelectedDimensions] = useState(["KH", "TG"]);
   const [selectedYears, setSelectedYears] = useState([]);
   const [selectedQuarters, setSelectedQuarters] = useState([]);
   const [selectedMonths, setSelectedMonths] = useState([]);
@@ -141,6 +148,7 @@ export default function CustomerPage() {
   const [firstOrderDateLookup, setFirstOrderDateLookup] = useState({});
 
   const [appliedFilters, setAppliedFilters] = useState({
+    dimensions: ["KH", "TG"],
     years: [],
     quarters: [],
     months: [],
@@ -541,11 +549,28 @@ export default function CustomerPage() {
     return ranges;
   }, [appliedFilters.totalItemsMax, appliedFilters.totalItemsMin, appliedFilters.totalRevenueMax, appliedFilters.totalRevenueMin]);
 
+  const resolvedCube = useMemo(() => 
+    resolveCubeName("Fact_HanhVi", appliedFilters.dimensions, appliedFilters),
+  [appliedFilters]);
+
   const customerFilters = useMemo(() => {
     const next = [];
+    const supportsTime = resolvedCube.includes("_TG") || resolvedCube === "TonKho" || resolvedCube === "BanHang" || resolvedCube === "HanhVi_KH_TG";
 
     if (firstOrderDateFilterValues.length > 0) {
       next.push({ key: "KH.FirstOrderDate", values: firstOrderDateFilterValues });
+    }
+
+    if (supportsTime) {
+      if (appliedFilters.years.length > 0) {
+        next.push({ key: "TG.Year", values: appliedFilters.years });
+      }
+      if (appliedFilters.quarters.length > 0) {
+        next.push({ key: "TG.Quarter", values: appliedFilters.quarters });
+      }
+      if (appliedFilters.months.length > 0) {
+        next.push({ key: "TG.Month", values: appliedFilters.months });
+      }
     }
 
     if (appliedFilters.types.length > 0) {
@@ -565,7 +590,7 @@ export default function CustomerPage() {
     }
 
     return next;
-  }, [appliedFilters, firstOrderDateFilterValues]);
+  }, [appliedFilters, firstOrderDateFilterValues, resolvedCube]);
 
   useEffect(() => {
     let mounted = true;
@@ -575,11 +600,26 @@ export default function CustomerPage() {
       setError("");
 
       try {
+        const rowsToFetch = [];
+        if (appliedFilters.dimensions.includes("KH")) {
+          rowsToFetch.push("KH.CustomerKey", "KH.Name", "KH.Type", "KH.FirstOrderDate");
+        }
+        if (appliedFilters.dimensions.includes("KH")) {
+          rowsToFetch.push("DD.State", "DD.City");
+        }
+        // HanhVi always has TG in full cube, but if TG is omitted we don't query it.
+        // HanhVi_KH has KH + DD. HanhVi_TG has TG.
+        const supportsTime = resolvedCube.includes("_TG") || resolvedCube === "TonKho" || resolvedCube === "BanHang" || resolvedCube === "HanhVi_KH_TG";
+
+        if (appliedFilters.dimensions.includes("TG") && supportsTime) {
+          rowsToFetch.push("TG.Year", "TG.Quarter", "TG.Month");
+        }
+
         const customerResponse = await queryOlapAllPages({
-          factGroup: "HanhVi",
-          cube: "HanhVi_KH",
+          factGroup: "Fact_HanhVi",
+          cube: resolvedCube,
           measures: ["Behavior.TotalRevenue", "Behavior.TotalItems", "Behavior.AvgOrderValue"],
-          rows: ["KH.CustomerKey", "KH.Name", "KH.Type", "KH.FirstOrderDate", "DD.State", "DD.City"],
+          rows: rowsToFetch,
           columns: [],
           filters: customerFilters,
           measureRanges,
@@ -599,8 +639,17 @@ export default function CustomerPage() {
           const firstOrderDateKey = extractDimensionValue(row, ["firstorderdate", "ngay dat", "date"]) || "N/A";
           const mappedDateParts = firstOrderDateLookup[String(firstOrderDateKey)] || null;
           const dateParts = mappedDateParts || parseDateParts(firstOrderDateKey);
-          const firstOrderDateLabel = dateParts
-            ? buildTimeLabel("TG.Month", dateParts.year, dateParts.quarter, dateParts.month)
+
+          const tgYear = Number(extractDimensionValue(row, ["year", "nam"])) || null;
+          const tgQuarter = Number(extractDimensionValue(row, ["quarter", "quy"])) || null;
+          const tgMonth = Number(extractDimensionValue(row, ["month", "thang"])) || null;
+
+          const year = dateParts?.year ?? tgYear;
+          const quarter = dateParts?.quarter ?? tgQuarter;
+          const month = dateParts?.month ?? tgMonth;
+
+          const firstOrderDateLabel = year
+            ? buildTimeLabel("TG.Month", year, quarter, month)
             : "Unknown";
 
           return {
@@ -609,9 +658,9 @@ export default function CustomerPage() {
             customerType: extractDimensionValue(row, ["type", "loai"]) || "Unknown",
             firstOrderDateKey,
             firstOrderDate: firstOrderDateLabel,
-            firstOrderYear: dateParts?.year ?? null,
-            firstOrderQuarter: dateParts?.quarter ?? null,
-            firstOrderMonth: dateParts?.month ?? null,
+            firstOrderYear: year,
+            firstOrderQuarter: quarter,
+            firstOrderMonth: month,
             state: extractDimensionValue(row, ["state", "bang"]) || "Unknown",
             city: extractDimensionValue(row, ["city", "thanh pho"]) || "Unknown",
             totalItems: extractMeasureByName(row, "Behavior.TotalItems"),
@@ -640,6 +689,7 @@ export default function CustomerPage() {
 
   function applyFilters() {
     setAppliedFilters({
+      dimensions: selectedDimensions.length > 0 ? [...selectedDimensions] : ["KH", "DD", "TG"],
       years: [...selectedYears],
       quarters: [...selectedQuarters],
       months: [...selectedMonths],
@@ -657,6 +707,7 @@ export default function CustomerPage() {
   function resetFilters() {
     const defaultYears = latestYear ? [latestYear] : [];
 
+    setSelectedDimensions(["KH", "DD", "TG"]);
     setSelectedYears(defaultYears);
     setSelectedQuarters([]);
     setSelectedMonths([]);
@@ -668,6 +719,7 @@ export default function CustomerPage() {
     setTotalRevenueRange({ min: "", max: "" });
 
     setAppliedFilters({
+      dimensions: ["KH", "DD", "TG"],
       years: [...defaultYears],
       quarters: [],
       months: [],
@@ -1055,51 +1107,68 @@ export default function CustomerPage() {
               <table className="fact-table">
                 <thead>
                   <tr>
-                    <th style={{ width: "1%" }} />
-                    <th>Customer Name</th>
-                    <th>State</th>
-                    <th>City</th>
+                    {appliedFilters.dimensions.includes("KH") ? <th>Customer Key</th> : null}
+                    {appliedFilters.dimensions.includes("KH") ? (
+                      <>
+                        <th>State</th>
+                        {locationLevelIndex >= 1 && <th>City</th>}
+                      </>
+                    ) : null}
+                    {appliedFilters.dimensions.includes("TG") ? (
+                      <>
+                        <th>Year</th>
+                        {timeLevelIndex >= 1 && <th>Quarter</th>}
+                        {timeLevelIndex >= 2 && <th>Month</th>}
+                      </>
+                    ) : null}
                     {visibleMeasureSet.has("totalItems") ? <th className="num">Total Items</th> : null}
                     {visibleMeasureSet.has("totalRevenue") ? <th className="num">Revenue ($)</th> : null}
-                    {visibleMeasureSet.has("avgOrderValue") ? <th className="num">Average Order Value ($)</th> : null}
+                    {visibleMeasureSet.has("avgOrderValue") ? <th className="num">Average Value ($)</th> : null}
                   </tr>
                 </thead>
                 <tbody>
                   {pagedFactRows.length > 0 ? pagedFactRows.map((row, index) => {
-                    const rowKey = `${row.customerKey}-${row.firstOrderDateKey}-${row.state}-${row.city}-${index}`;
+                    const rowKey = `${row.customerKey}-${index}`;
                     const isExpanded = expandedRowKeys.includes(rowKey);
 
                     return (
                       <Fragment key={rowKey}>
                         <tr>
-                          <td>
-                            <button
-                              type="button"
-                              className="expand-btn"
-                              onClick={() => toggleExpandedRow(rowKey)}
-                              aria-label={isExpanded ? "Collapse details" : "Expand details"}
-                            >
-                              {isExpanded ? "-" : "+"}
-                            </button>
-                          </td>
-                          <td title={row.customerName}>
-                            <button
-                              type="button"
-                              className="fact-key-btn"
-                              onClick={() => toggleExpandedRow(rowKey)}
-                            >
-                              {truncateMiddle(row.customerName, 18, 7, 5)}
-                            </button>
-                          </td>
-                          <td>{row.state}</td>
-                          <td>{row.city}</td>
+                          {appliedFilters.dimensions.includes("KH") ? (
+                            <td title={row.customerKey}>
+                              <div className="fact-key-inline">
+                                <span className="fact-key-text">{row.customerKey}</span>
+                                <button
+                                  type="button"
+                                  className="expand-btn fact-key-plus"
+                                  onClick={() => toggleExpandedRow(rowKey)}
+                                  aria-label={isExpanded ? "Collapse details" : "Expand details"}
+                                >
+                                  {isExpanded ? "-" : "+"}
+                                </button>
+                              </div>
+                            </td>
+                          ) : null}
+                          {appliedFilters.dimensions.includes("KH") ? (
+                            <>
+                              <td>{row.state}</td>
+                              {locationLevelIndex >= 1 && <td>{row.city}</td>}
+                            </>
+                          ) : null}
+                          {appliedFilters.dimensions.includes("TG") ? (
+                            <>
+                              <td>{row.firstOrderYear || "-"}</td>
+                              {timeLevelIndex >= 1 && <td>{row.firstOrderQuarter ? `Q${row.firstOrderQuarter}` : "-"}</td>}
+                              {timeLevelIndex >= 2 && <td>{row.firstOrderMonth ? `M${row.firstOrderMonth}` : "-"}</td>}
+                            </>
+                          ) : null}
                           {visibleMeasureSet.has("totalItems") ? <td className="num">{formatNumber(row.totalItems)}</td> : null}
                           {visibleMeasureSet.has("totalRevenue") ? <td className="num">{formatCurrencyUSD(row.totalRevenue)}</td> : null}
                           {visibleMeasureSet.has("avgOrderValue") ? <td className="num">{formatCurrencyUSD(row.avgOrderValue)}</td> : null}
                         </tr>
                         {isExpanded ? (
                           <tr className="expand-detail">
-                            <td colSpan={4 + [...visibleMeasureSet].length}>
+                            <td colSpan={10}>
                               <div className="expand-detail__grid">
                                 <div className="expand-detail__item">
                                   <span>Customer Name</span>
@@ -1113,10 +1182,6 @@ export default function CustomerPage() {
                                   <span>First Order Date</span>
                                   <strong>{row.firstOrderDate}</strong>
                                 </div>
-                                <div className="expand-detail__item">
-                                  <span>State / City</span>
-                                  <strong>{`${row.state} / ${row.city}`}</strong>
-                                </div>
                               </div>
                             </td>
                           </tr>
@@ -1125,7 +1190,7 @@ export default function CustomerPage() {
                     );
                   }) : (
                     <tr>
-                      <td colSpan={4 + [...visibleMeasureSet].length} className="empty-message">No data available.</td>
+                      <td colSpan={10} className="empty-message">No data available.</td>
                     </tr>
                   )}
                 </tbody>
@@ -1164,6 +1229,12 @@ export default function CustomerPage() {
 
           <div className="olap-panel-group">
             <p className="olap-panel-group__title">Time Hierarchy Members</p>
+            <MultiSelect
+              label="Dimensions"
+              values={selectedDimensions}
+              options={DIMENSION_OPTIONS}
+              onChange={setSelectedDimensions}
+            />
             <MultiSelect label="Year" values={selectedYears} options={yearOptions} onChange={setSelectedYears} />
             {timeLevelIndex >= 1 ? (
               <MultiSelect label="Quarter" values={selectedQuarters} options={quarterOptions} onChange={setSelectedQuarters} />

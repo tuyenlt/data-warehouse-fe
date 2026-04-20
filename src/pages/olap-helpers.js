@@ -218,3 +218,45 @@ export function buildMatrixRows(items, pivot, firstColumnLabel, secondColumnLabe
     rows: [[secondColumnLabel, ...items.map((item) => formatter(item.value))]]
   };
 }
+
+export function resolveCubeName(factGroup, selectedDimensions, activeFilters = {}) {
+  const dims = Array.isArray(selectedDimensions) ? selectedDimensions.map((d) => d.toUpperCase()) : [];
+  const hasMH = dims.includes("MH");
+  const hasCH = dims.includes("CH");
+  const hasKH = dims.includes("KH");
+  // Kiểm tra nếu có bộ lọc thời gian đang được áp dụng ở thanh công cụ
+  const hasActiveTimeFilter = (activeFilters.years?.length > 0) || (activeFilters.quarters?.length > 0) || (activeFilters.months?.length > 0);
+  const hasTG = dims.includes("TG") || hasActiveTimeFilter;
+
+  // 1. Nhóm Mat_Hang
+  if (factGroup === "Fact_BanHang" || factGroup === "BanHang") {
+    if (hasMH && hasTG) return "BanHang_MH_TG";
+    if (hasMH) return "BanHang_MH";
+    if (hasTG) return "BanHang_TG";
+    return "BanHang_MH_TG";
+  }
+
+  // 2. Nhóm Ton_Kho
+  if (factGroup === "Fact_TonKho" || factGroup === "TonKho") {
+    if (hasCH && hasMH && hasTG) return "TonKho";
+    if (hasCH && hasMH) return "TonKho_CH_MH";
+    if (hasCH && hasTG) return "TonKho_CH_TG";
+    if (hasCH) return "TonKho_CH";
+    // Server không có TonKho_MH_TG, dùng TonKho làm fallback
+    if (hasMH && hasTG) return "TonKho";
+    if (hasMH) return "TonKho_MH";
+    // Server không có TonKho_TG, dùng TonKho làm fallback
+    if (hasTG) return "TonKho";
+    return "TonKho";
+  }
+
+  // 3. Nhóm Hanh_vi
+  if (factGroup === "Fact_HanhVi" || factGroup === "HanhVi") {
+    // Server không có khối tổng hợp, ưu tiên dùng khối KH
+    if (hasKH) return "HanhVi_KH";
+    if (hasTG) return "HanhVi_TG";
+    return "HanhVi_KH";
+  }
+
+  return "";
+}

@@ -14,6 +14,7 @@ import {
   formatCurrencyUSD,
   formatNumber,
   getLatestMember,
+  resolveCubeName,
   truncateMiddle
 } from "../olap-helpers";
 import "./inventory.css";
@@ -149,6 +150,13 @@ export default function InventoryPage() {
   const [isPivotStoreCountByLocation, setIsPivotStoreCountByLocation] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
+  const DIMENSION_OPTIONS = [
+    { value: "MH", label: "Mặt Hàng (Product)" },
+    { value: "CH", label: "Cửa Hàng & Địa Điểm (Store & Location)" },
+    { value: "TG", label: "Thời Gian (Time)" }
+  ];
+
+  const [selectedDimensions, setSelectedDimensions] = useState(["MH", "CH", "TG"]);
   const [selectedYears, setSelectedYears] = useState([]);
   const [selectedQuarters, setSelectedQuarters] = useState([]);
   const [selectedMonths, setSelectedMonths] = useState([]);
@@ -184,6 +192,7 @@ export default function InventoryPage() {
   const [storeLocationMap, setStoreLocationMap] = useState({});
 
   const [appliedFilters, setAppliedFilters] = useState({
+    dimensions: ["MH", "CH", "TG"],
     years: [],
     quarters: [],
     months: [],
@@ -463,17 +472,24 @@ export default function InventoryPage() {
     setSelectedStores((prev) => prev.filter((store) => validStores.has(store)));
   }, [visibleStoreOptions]);
 
+  const resolvedCube = useMemo(() => 
+    resolveCubeName("Fact_TonKho", appliedFilters.dimensions, appliedFilters),
+  [appliedFilters]);
+
   const filters = useMemo(() => {
     const next = [];
+    const supportsTime = resolvedCube.includes("_TG") || resolvedCube === "TonKho" || resolvedCube === "BanHang" || resolvedCube === "HanhVi_KH_TG";
 
-    if (appliedFilters.years.length > 0) {
-      next.push({ key: "TG.Year", values: appliedFilters.years });
-    }
-    if (appliedFilters.quarters.length > 0) {
-      next.push({ key: "TG.Quarter", values: appliedFilters.quarters });
-    }
-    if (appliedFilters.months.length > 0) {
-      next.push({ key: "TG.Month", values: appliedFilters.months });
+    if (supportsTime) {
+      if (appliedFilters.years.length > 0) {
+        next.push({ key: "TG.Year", values: appliedFilters.years });
+      }
+      if (appliedFilters.quarters.length > 0) {
+        next.push({ key: "TG.Quarter", values: appliedFilters.quarters });
+      }
+      if (appliedFilters.months.length > 0) {
+        next.push({ key: "TG.Month", values: appliedFilters.months });
+      }
     }
 
     if (appliedFilters.states.length > 0) {
@@ -491,7 +507,7 @@ export default function InventoryPage() {
     }
 
     return next;
-  }, [appliedFilters]);
+  }, [appliedFilters, resolvedCube]);
 
   const measureRanges = useMemo(() => {
     const ranges = {};
@@ -543,23 +559,26 @@ export default function InventoryPage() {
         // NOTE: MH.Description does not exist in the TonKho SSAS cube.
         // Omitting it prevents the backend from resolving it to the same
         // level as MH.ProductKey (duplicate hierarchy MDX error).
+        const rowsToFetch = [];
+        if (appliedFilters.dimensions.includes("MH")) {
+          rowsToFetch.push("MH.ProductKey", "MH.Size", "MH.Weight");
+        }
+        if (appliedFilters.dimensions.includes("CH")) {
+          rowsToFetch.push("CH.StoreKey", "CH.LocationKey", "CH.Phone");
+          // Địa điểm đi kèm luôn với Cửa Hàng
+          rowsToFetch.push("DD.State", "DD.City");
+        }
+        const supportsTime = resolvedCube.includes("_TG") || resolvedCube === "TonKho" || resolvedCube === "BanHang" || resolvedCube === "HanhVi_KH_TG";
+
+        if (appliedFilters.dimensions.includes("TG") && supportsTime) {
+          rowsToFetch.push("TG.Year", "TG.Quarter", "TG.Month");
+        }
+
         const response = await queryOlapAllPages({
-          factGroup: "TonKho",
-          cube: "TonKho",
+          factGroup: "Fact_TonKho",
+          cube: resolvedCube,
           measures: ["Inventory.Quantity", "Inventory.Value", "Inventory.Weight"],
-          rows: [
-            "MH.ProductKey",
-            "MH.Size",
-            "MH.Weight",
-            "CH.StoreKey",
-            "CH.LocationKey",
-            "CH.Phone",
-            "DD.State",
-            "DD.City",
-            "TG.Year",
-            "TG.Quarter",
-            "TG.Month"
-          ],
+          rows: rowsToFetch,
           columns: [],
           filters,
           measureRanges,
@@ -611,7 +630,7 @@ export default function InventoryPage() {
             value: extractMeasureByName(row, "Inventory.Value"),
             weight: extractMeasureByName(row, "Inventory.Weight")
           };
-        }).filter((row) => isValidTimeParts(row.year, row.quarter, row.month));
+        }).filter((row) => !appliedFilters.dimensions.includes("TG") || isValidTimeParts(row.year, row.quarter, row.month));
 
         setAllFactRows(normalizedRows);
       } catch (err) {
@@ -633,6 +652,7 @@ export default function InventoryPage() {
 
   function applyFilters() {
     setAppliedFilters({
+      dimensions: selectedDimensions.length > 0 ? [...selectedDimensions] : ["MH", "CH", "TG"],
       years: [...selectedYears],
       quarters: [...selectedQuarters],
       months: [...selectedMonths],
@@ -652,6 +672,7 @@ export default function InventoryPage() {
   function resetFilters() {
     const defaultYears = latestYear ? [latestYear] : [];
 
+    setSelectedDimensions(["MH", "CH", "TG"]);
     setSelectedYears(defaultYears);
     setSelectedQuarters([]);
     setSelectedMonths([]);
@@ -663,6 +684,7 @@ export default function InventoryPage() {
     setQuantityRange({ min: "", max: "" });
     setWeightRange({ min: "", max: "" });
     setAppliedFilters({
+      dimensions: ["MH", "CH", "TG"],
       years: [...defaultYears],
       quarters: [],
       months: [],
@@ -1038,17 +1060,24 @@ export default function InventoryPage() {
               <table className="fact-table">
                 <thead>
                   <tr>
-                    <th>Product Key</th>
-                    <th>Store Key</th>
-                    {locationHierarchyColumns.map((column) => (
-                      <th key={`location-col-${column}`}>{column}</th>
-                    ))}
-                    {timeHierarchyColumns.map((column) => (
-                      <th key={`time-col-${column}`}>{column}</th>
-                    ))}
+                    {appliedFilters.dimensions.includes("MH") ? <th>Product Key</th> : null}
+                    {appliedFilters.dimensions.includes("CH") ? (
+                      <>
+                        <th>Store Key</th>
+                        <th>State</th>
+                        {locationLevelIndex >= 1 && <th>City</th>}
+                      </>
+                    ) : null}
+                    {appliedFilters.dimensions.includes("TG") ? (
+                      <>
+                        <th>Year</th>
+                        {timeLevelIndex >= 1 && <th>Quarter</th>}
+                        {timeLevelIndex >= 2 && <th>Month</th>}
+                      </>
+                    ) : null}
                     {visibleMeasureSet.has("quantity") ? <th className="num">Quantity</th> : null}
                     {visibleMeasureSet.has("value") ? <th className="num">Value ($)</th> : null}
-                    {visibleMeasureSet.has("weight") ? <th className="num">Weight</th> : null}
+                    {visibleMeasureSet.has("weight") ? <th className="num">Total Weight (kg)</th> : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -1060,56 +1089,54 @@ export default function InventoryPage() {
                     return (
                       <Fragment key={rowKey}>
                         <tr>
-                          <td title={row.productKey}>
-                            <div className="fact-key-inline">
-                              <span className="fact-key-text">{row.productKey}</span>
-                              <button
-                                type="button"
-                                className="expand-btn fact-key-plus"
-                                onClick={() => toggleExpandedProductRow(rowKey)}
-                                aria-label={isProductExpanded ? "Collapse product details" : "Expand product details"}
-                              >
-                                {isProductExpanded ? "-" : "+"}
-                              </button>
-                            </div>
-                          </td>
-                          <td title={row.storeKey}>
-                            <div className="fact-key-inline">
-                              <span className="fact-key-text">{row.storeKey}</span>
-                              <button
-                                type="button"
-                                className="expand-btn fact-key-plus"
-                                onClick={() => toggleExpandedStoreRow(rowKey)}
-                                aria-label={isStoreExpanded ? "Collapse store details" : "Expand store details"}
-                              >
-                                {isStoreExpanded ? "-" : "+"}
-                              </button>
-                            </div>
-                          </td>
-                          {locationHierarchyColumns.map((column) => {
-                            if (column === "City") {
-                              return <td key={`${rowKey}-loc-city`}>{row.city || "-"}</td>;
-                            }
-                            return <td key={`${rowKey}-loc-state`}>{row.state || "-"}</td>;
-                          })}
-                          {timeHierarchyColumns.map((column) => {
-                            if (column === "Year") {
-                              return <td key={`${rowKey}-time-year`}>{row.year || "-"}</td>;
-                            }
-
-                            if (column === "Quarter") {
-                              return <td key={`${rowKey}-time-quarter`}>{row.quarter ? `Q${row.quarter}` : "-"}</td>;
-                            }
-
-                            return <td key={`${rowKey}-time-month`}>{row.month ? `M${row.month}` : "-"}</td>;
-                          })}
+                          {appliedFilters.dimensions.includes("MH") ? (
+                            <td title={row.productKey}>
+                              <div className="fact-key-inline">
+                                <span className="fact-key-text">{row.productKey}</span>
+                                <button
+                                  type="button"
+                                  className="expand-btn fact-key-plus"
+                                  onClick={() => toggleExpandedProductRow(rowKey)}
+                                  aria-label={isProductExpanded ? "Collapse details" : "Expand details"}
+                                >
+                                  {isProductExpanded ? "-" : "+"}
+                                </button>
+                              </div>
+                            </td>
+                          ) : null}
+                          {appliedFilters.dimensions.includes("CH") ? (
+                            <>
+                              <td title={row.storeKey}>
+                                <div className="fact-key-inline">
+                                  <span className="fact-key-text">{row.storeKey}</span>
+                                  <button
+                                    type="button"
+                                    className="expand-btn fact-key-plus"
+                                    onClick={() => setExpandedStoreRowKey(isStoreExpanded ? "" : rowKey)}
+                                    aria-label={isStoreExpanded ? "Collapse details" : "Expand details"}
+                                  >
+                                    {isStoreExpanded ? "-" : "+"}
+                                  </button>
+                                </div>
+                              </td>
+                              <td>{row.state}</td>
+                              {locationLevelIndex >= 1 && <td>{row.city}</td>}
+                            </>
+                          ) : null}
+                          {appliedFilters.dimensions.includes("TG") ? (
+                            <>
+                              <td>{row.year}</td>
+                              {timeLevelIndex >= 1 && <td>{`Q${row.quarter}`}</td>}
+                              {timeLevelIndex >= 2 && <td>{`M${row.month}`}</td>}
+                            </>
+                          ) : null}
                           {visibleMeasureSet.has("quantity") ? <td className="num">{formatNumber(row.quantity)}</td> : null}
                           {visibleMeasureSet.has("value") ? <td className="num">{formatCurrencyUSD(row.value)}</td> : null}
                           {visibleMeasureSet.has("weight") ? <td className="num">{formatNumber(row.weight)}</td> : null}
                         </tr>
                         {isProductExpanded ? (
                           <tr className="expand-detail">
-                            <td colSpan={factTableColSpan}>
+                            <td colSpan={10}>
                               <div className="expand-detail__grid">
                                 <div className="expand-detail__item">
                                   <span>Product Description</span>
@@ -1121,7 +1148,7 @@ export default function InventoryPage() {
                                 </div>
                                 <div className="expand-detail__item">
                                   <span>Product Weight</span>
-                                  <strong>{formatDecimalMax2(row.productWeight)}</strong>
+                                  <strong>{row.productWeight}</strong>
                                 </div>
                               </div>
                             </td>
@@ -1129,7 +1156,7 @@ export default function InventoryPage() {
                         ) : null}
                         {isStoreExpanded ? (
                           <tr className="expand-detail">
-                            <td colSpan={factTableColSpan}>
+                            <td colSpan={10}>
                               <div className="expand-detail__grid">
                                 <div className="expand-detail__item">
                                   <span>Store Phone</span>
@@ -1143,7 +1170,7 @@ export default function InventoryPage() {
                     );
                   }) : (
                     <tr>
-                      <td colSpan={factTableColSpan} className="empty-message">No data available.</td>
+                      <td colSpan={10} className="empty-message">No data available.</td>
                     </tr>
                   )}
                 </tbody>
@@ -1182,6 +1209,12 @@ export default function InventoryPage() {
 
           <div className="olap-panel-group">
             <p className="olap-panel-group__title">Hierarchy Members</p>
+            <MultiSelect
+              label="Dimensions"
+              values={selectedDimensions}
+              options={DIMENSION_OPTIONS}
+              onChange={setSelectedDimensions}
+            />
             <MultiSelect label="Year" values={selectedYears} options={yearOptions} onChange={setSelectedYears} />
             {timeLevelIndex >= 1 ? (
               <MultiSelect label="Quarter" values={selectedQuarters} options={quarterOptions} onChange={setSelectedQuarters} />
